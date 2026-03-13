@@ -38,41 +38,45 @@ export class CopilotService {
    * Resolve the Copilot CLI path. Electron apps don't inherit the shell PATH,
    * so we probe common install locations when the default "copilot" fails.
    */
-  private async resolveCliPath(): Promise<string> {
+  private resolveCliPath(): string {
     const configured = this.settings.cliPath;
     if (configured && configured !== "copilot") {
       return configured;
     }
+
+    const home = process.env.HOME || process.env.USERPROFILE || "";
 
     // Common install locations on macOS / Linux / Windows
     const candidates = [
       "/opt/homebrew/bin/copilot",
       "/usr/local/bin/copilot",
       "/usr/bin/copilot",
-      `${process.env.HOME}/.npm-global/bin/copilot`,
-      `${process.env.HOME}/.local/bin/copilot`,
-      // nvm / fnm managed node
-      `${process.env.HOME}/.nvm/versions/node/${process.version}/bin/copilot`,
-      // Windows
-      `${process.env.LOCALAPPDATA}\\npm\\copilot.cmd`,
-      `${process.env.APPDATA}\\npm\\copilot.cmd`,
+      `${home}/.npm-global/bin/copilot`,
+      `${home}/.local/bin/copilot`,
+      `${home}/.nvm/versions/node/${process.version}/bin/copilot`,
+      `${process.env.LOCALAPPDATA || ""}\\npm\\copilot.cmd`,
+      `${process.env.APPDATA || ""}\\npm\\copilot.cmd`,
     ];
 
-    const { existsSync } = await import("fs");
-    for (const candidate of candidates) {
-      if (candidate && existsSync(candidate)) {
-        console.log(`[Copilot] Found CLI at ${candidate}`);
-        return candidate;
+    // Use Node's require('fs') via Electron's Node integration
+    try {
+      const fs = window.require("fs");
+      for (const candidate of candidates) {
+        if (candidate && fs.existsSync(candidate)) {
+          console.log(`[Copilot] Found CLI at ${candidate}`);
+          return candidate;
+        }
       }
+    } catch {
+      // fs not available — fall through
     }
 
-    // Fall back to bare name and let the SDK try PATH
     return "copilot";
   }
 
   async initialize(): Promise<void> {
     try {
-      const cliPath = await this.resolveCliPath();
+      const cliPath = this.resolveCliPath();
       this.client = new CopilotClient({
         cliPath,
         logLevel: this.settings.logLevel === "warn" ? "warning" : this.settings.logLevel,
