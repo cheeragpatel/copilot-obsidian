@@ -25,8 +25,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      obsidian: "/Users/cheeragpatel/Documents/git/copilot-obsidian/src/__mocks__/obsidian.ts",
-      "@github/copilot-sdk": "/Users/cheeragpatel/Documents/git/copilot-obsidian/src/__mocks__/copilot-sdk.ts",
+      obsidian: new URL("./src/__mocks__/obsidian.ts", import.meta.url).pathname,
+      "@github/copilot-sdk": new URL("./src/__mocks__/copilot-sdk.ts", import.meta.url).pathname,
     },
   },
 });
