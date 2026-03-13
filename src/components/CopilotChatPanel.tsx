@@ -16,6 +16,7 @@ export const CopilotChatPanel: React.FC = () => {
   const initialized = useRef(false);
   const initPromise = useRef<Promise<void> | null>(null);
   const commandRegistry = useRef(new SlashCommandRegistry());
+  const lastUserPrompt = useRef<string | null>(null);
   const {
     messages,
     currentMode,
@@ -182,6 +183,7 @@ export const CopilotChatPanel: React.FC = () => {
 
       setLoading(true);
       setError(null);
+      lastUserPrompt.current = actualPrompt;
 
       try {
         await ctx.copilotService.sendMessage(actualPrompt);
@@ -238,6 +240,31 @@ export const CopilotChatPanel: React.FC = () => {
     }
   }, [ctx]);
 
+  const handleRetry = useCallback(async () => {
+    if (!ctx || !lastUserPrompt.current) return;
+    const prompt = lastUserPrompt.current;
+
+    addMessage({
+      id: generateId(),
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+      isStreaming: true,
+    });
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await ctx.copilotService.sendMessage(prompt);
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  }, [ctx]);
+
+  const canRetry = !isLoading && messages.length > 0 && !!lastUserPrompt.current;
+
   return (
     <div className="copilot-chat-container">
       <ChatHeader
@@ -260,7 +287,9 @@ export const CopilotChatPanel: React.FC = () => {
       <ChatInput
         onSend={handleSend}
         onAbort={handleAbort}
+        onRetry={handleRetry}
         isLoading={isLoading}
+        canRetry={canRetry}
       />
     </div>
   );

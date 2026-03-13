@@ -20,6 +20,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   }, [message.content]);
 
   const isUser = message.role === "user";
+  const isThinking = !isUser && message.isStreaming && !message.content;
+  const isDone = !isUser && !message.isStreaming && message.content;
 
   return (
     <div className="copilot-message">
@@ -30,6 +32,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
         <span className="copilot-message-role">
           {isUser ? "You" : message.agentName ? `@${message.agentName}` : "Copilot"}
         </span>
+        {isThinking && (
+          <span className="copilot-thinking-badge">thinking…</span>
+        )}
+        {isDone && (
+          <span className="copilot-done-badge">✓</span>
+        )}
         {!isUser && message.content && (
           <button
             className="copilot-message-copy-btn"
@@ -46,6 +54,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       )}
 
       <div className="copilot-message-body">
+        {isThinking && (
+          <div className="copilot-thinking-indicator">
+            <div className="copilot-thinking-dots">
+              <span /><span /><span />
+            </div>
+          </div>
+        )}
         {message.content ? (
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
@@ -72,7 +87,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
             {message.content}
           </ReactMarkdown>
         ) : null}
-        {message.isStreaming && <span className="copilot-streaming-cursor" />}
+        {message.isStreaming && message.content && <span className="copilot-streaming-cursor" />}
       </div>
     </div>
   );

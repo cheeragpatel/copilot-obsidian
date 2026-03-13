@@ -39,9 +39,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       <div className="copilot-chat-controls">
         <ModeSelector currentMode={currentMode} onModeChange={onModeSwitch} />
         <ModelSelector />
-        {currentMode === ChatMode.Agent && customAgents.length > 0 && (
-          <AgentPicker agents={customAgents} />
-        )}
+        <AgentPicker agents={customAgents} />
       </div>
     </>
   );

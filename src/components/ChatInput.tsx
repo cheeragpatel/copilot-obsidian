@@ -7,7 +7,9 @@ import type { CustomAgentEntry } from "../types/settings";
 interface ChatInputProps {
   onSend: (message: string) => void;
   onAbort: () => void;
+  onRetry?: () => void;
   isLoading: boolean;
+  canRetry?: boolean;
 }
 
 interface AutocompleteItem {
@@ -21,7 +23,9 @@ interface AutocompleteItem {
 export const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
   onAbort,
+  onRetry,
   isLoading,
+  canRetry,
 }) => {
   const [input, setInput] = useState("");
   const [autocomplete, setAutocomplete] = useState<AutocompleteItem[]>([]);
@@ -172,22 +176,32 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               ? "Copilot is thinking..."
               : "Ask Copilot anything... (/ for commands, @ for agents)"
           }
-          disabled={isLoading}
           rows={1}
         />
-        {isLoading ? (
-          <button className="copilot-chat-stop-btn" onClick={onAbort}>
-            Stop
-          </button>
-        ) : (
-          <button
-            className="copilot-chat-send-btn"
-            onClick={handleSubmit}
-            disabled={!input.trim()}
-          >
-            Send
-          </button>
-        )}
+        <div className="copilot-chat-btn-group">
+          {canRetry && !isLoading && (
+            <button
+              className="copilot-chat-retry-btn"
+              onClick={onRetry}
+              title="Retry last message"
+            >
+              ↻
+            </button>
+          )}
+          {isLoading ? (
+            <button className="copilot-chat-stop-btn" onClick={onAbort}>
+              ■ Stop
+            </button>
+          ) : (
+            <button
+              className="copilot-chat-send-btn"
+              onClick={handleSubmit}
+              disabled={!input.trim()}
+            >
+              Send
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
