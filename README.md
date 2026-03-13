@@ -19,94 +19,115 @@ Built on the official [`@github/copilot-sdk`](https://github.com/github/copilot-
 - **Streaming** — Real-time response streaming with thinking indicators
 - **Markdown rendering** — Full markdown with syntax-highlighted code blocks
 
+---
+
+## Quick Install
+
+> You need a [GitHub Copilot](https://github.com/features/copilot) subscription and the Copilot CLI. See [Prerequisites](#prerequisites) below.
+
+### Option 1: One-line installer (macOS / Linux)
+
+Open a terminal and run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cheeragpatel/copilot-obsidian/main/install.sh | bash
+```
+
+The script auto-detects your Obsidian vault, downloads the latest release, and installs the plugin. If you have multiple vaults it will ask which one to use.
+
+To install into a specific vault:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cheeragpatel/copilot-obsidian/main/install.sh | bash -s -- ~/Documents/Obsidian/MyVault
+```
+
+### Option 2: Manual download from GitHub Releases
+
+1. Go to the [latest release](https://github.com/cheeragpatel/copilot-obsidian/releases/latest)
+2. Download these three files: **main.js**, **manifest.json**, **styles.css**
+3. In your vault folder, create a new folder:
+   ```
+   <your-vault>/.obsidian/plugins/github-copilot-for-obsidian/
+   ```
+4. Move the three downloaded files into that folder
+5. Open Obsidian → **Settings** → **Community plugins** → turn off **Restricted mode** → enable **GitHub Copilot for Obsidian**
+
+### Option 3: BRAT (auto-updates)
+
+If you use the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) for managing beta plugins:
+
+1. Open Obsidian → **Settings** → **BRAT** → **Add Beta Plugin**
+2. Enter: `cheeragpatel/copilot-obsidian`
+3. Click **Add Plugin** — BRAT will install it and keep it updated
+
+### Option 4: Build from source
+
+For developers who want to modify the plugin:
+
+```bash
+git clone https://github.com/cheeragpatel/copilot-obsidian.git
+cd copilot-obsidian
+npm install
+npm run build
+```
+
+Then copy the built files into your vault:
+
+```bash
+mkdir -p <VAULT>/.obsidian/plugins/github-copilot-for-obsidian
+cp main.js manifest.json styles.css <VAULT>/.obsidian/plugins/github-copilot-for-obsidian/
+```
+
+---
+
 ## Prerequisites
 
-1. **Obsidian** v1.5.12 or later (desktop only)
-2. **Node.js** v18 or later
-3. **GitHub Copilot CLI** installed and authenticated
+You need two things before using this plugin:
 
-### Install the Copilot CLI
+### 1. GitHub Copilot subscription
+
+You need an active [GitHub Copilot](https://github.com/features/copilot) subscription (Individual, Business, or Enterprise).
+
+### 2. GitHub Copilot CLI
+
+Install the Copilot CLI using npm (requires [Node.js](https://nodejs.org/) v18+):
 
 ```bash
 npm install -g @github/copilot
 ```
 
-Verify it works:
-
-```bash
-copilot --version
-```
-
-If you haven't authenticated yet:
+Then sign in:
 
 ```bash
 copilot auth login
 ```
 
-## Installation
-
-### Option A: Install from source (recommended)
-
-1. **Clone this repo** into a local directory:
-
-   ```bash
-   git clone https://github.com/cheeragpatel/copilot-obsidian.git
-   cd copilot-obsidian
-   ```
-
-2. **Install dependencies and build:**
-
-   ```bash
-   npm install
-   npm run build
-   ```
-
-   This produces `main.js` in the project root.
-
-3. **Copy the plugin into your vault:**
-
-   ```bash
-   # Replace <VAULT> with your vault path
-   mkdir -p <VAULT>/.obsidian/plugins/github-copilot-for-obsidian
-   cp main.js manifest.json styles.css <VAULT>/.obsidian/plugins/github-copilot-for-obsidian/
-   ```
-
-   For example:
-
-   ```bash
-   mkdir -p ~/Documents/Obsidian/MyVault/.obsidian/plugins/github-copilot-for-obsidian
-   cp main.js manifest.json styles.css ~/Documents/Obsidian/MyVault/.obsidian/plugins/github-copilot-for-obsidian/
-   ```
-
-4. **Enable the plugin in Obsidian:**
-
-   - Open Obsidian → Settings → Community plugins
-   - Turn off "Restricted mode" if prompted
-   - Find "GitHub Copilot for Obsidian" in the list and toggle it on
-
-5. **Open the Copilot sidebar:**
-
-   - Use the command palette (`Cmd/Ctrl + P`) and search for "Open Copilot Chat"
-   - Or click the Copilot icon in the left ribbon
-
-### Option B: Symlink for development
-
-If you want live rebuilds during development:
+Verify it's working:
 
 ```bash
-# Clone and install
-git clone https://github.com/cheeragpatel/copilot-obsidian.git
-cd copilot-obsidian
-npm install
-
-# Symlink into your vault
-ln -s "$(pwd)" <VAULT>/.obsidian/plugins/github-copilot-for-obsidian
-
-# Start dev mode (auto-rebuilds on file changes)
-npm run dev
+copilot --version
 ```
 
-Then enable the plugin in Obsidian settings. After each rebuild, reload Obsidian (`Cmd/Ctrl + R`) or disable/re-enable the plugin.
+> **Don't have Node.js?** Download it from [nodejs.org](https://nodejs.org/) — pick the LTS version. On macOS you can also use `brew install node`.
+
+---
+
+## Getting Started
+
+1. Open Obsidian
+2. Use the command palette (`Cmd+P` on Mac, `Ctrl+P` on Windows/Linux)
+3. Type **"Open Copilot Chat"** and press Enter
+4. The Copilot sidebar appears — start chatting!
+
+You can also click the **Copilot icon** in the left ribbon to open the sidebar.
+
+### Try these to start
+
+- Just ask a question: *"What are the key themes in my notes about project X?"*
+- Use a slash command: `/summarize` (summarizes the note you have open)
+- Switch to **Agent** mode to let Copilot read and edit your vault
+
+---
 
 ## Configuration
 
@@ -125,7 +146,23 @@ Open **Settings → GitHub Copilot for Obsidian** to configure:
 | MCP Servers | Configure MCP server connections | None |
 | Custom Agents | Manually define agents (in addition to auto-discovered ones) | None |
 
-## Adding Custom Agents
+## Slash Commands
+
+Type `/` in the chat input to see available commands:
+
+| Command | Description |
+|---------|-------------|
+| `/explain` | Explain the active note |
+| `/summarize` | Summarize the active note |
+| `/fix` | Fix grammar and spelling |
+| `/outline` | Generate an outline |
+| `/tags` | Suggest tags for the note |
+| `/links` | Find related notes to link |
+| `/new` | Create a new note from a prompt |
+| `/vault` | Get vault statistics |
+| `/daily` | Summarize today's daily note |
+
+## Custom Agents
 
 Agents are auto-discovered from these locations:
 
@@ -151,21 +188,23 @@ You are an expert note reviewer. Analyze the provided note for:
 
 You can also add agents inline from the agent picker dropdown in the chat panel.
 
-## Slash Commands
+---
 
-Type `/` in the chat input to see available commands:
+## Troubleshooting
 
-| Command | Description |
-|---------|-------------|
-| `/explain` | Explain the active note |
-| `/summarize` | Summarize the active note |
-| `/fix` | Fix grammar and spelling |
-| `/outline` | Generate an outline |
-| `/tags` | Suggest tags for the note |
-| `/links` | Find related notes to link |
-| `/new` | Create a new note from a prompt |
-| `/vault` | Get vault statistics |
-| `/daily` | Summarize today's daily note |
+**"Copilot CLI not found"**
+The plugin auto-detects common install paths (`/opt/homebrew/bin`, `/usr/local/bin`, etc.). If it can't find the CLI, set the full path in Settings → CLI Path. Find it with `which copilot`.
+
+**"env: node: No such file or directory"**
+Obsidian (Electron) doesn't inherit your shell PATH. The plugin adds common bin directories automatically, but if Node is in an unusual location, ensure `/path/to/node/bin` is in your system PATH or set the CLI path to the full `copilot` binary path.
+
+**Sidebar not appearing**
+Use the command palette (`Cmd/Ctrl + P`) → "Open Copilot Chat". If it still doesn't appear, try disabling and re-enabling the plugin.
+
+**Permission prompts keep appearing**
+Choose "Allow This Session" or "Always Allow" to skip repeated prompts for the same action. You can clear permanent permissions from the Obsidian developer console: `localStorage.removeItem('copilot-permanent-permissions')`.
+
+---
 
 ## Development
 
@@ -182,12 +221,28 @@ npm run dev
 # Run tests
 npm test
 
-# Run tests in watch mode
-npm run test:watch
-
 # Run tests with coverage
 npm run test:coverage
 ```
+
+### Symlink for development
+
+```bash
+ln -s "$(pwd)" <VAULT>/.obsidian/plugins/github-copilot-for-obsidian
+npm run dev
+```
+
+Then reload Obsidian (`Cmd/Ctrl + R`) after each change.
+
+### Creating a release
+
+```bash
+# Bump version in package.json, then:
+npm run version
+git push && git push --tags
+```
+
+The GitHub Actions workflow builds and publishes the release automatically.
 
 ## Architecture
 
@@ -205,20 +260,6 @@ Obsidian (Electron)
        ├─ PermissionModal (Allow Once / Session / Always)
        └─ SettingsTab
 ```
-
-## Troubleshooting
-
-**"Copilot CLI not found"**
-The plugin auto-detects common install paths (`/opt/homebrew/bin`, `/usr/local/bin`, etc.). If it can't find the CLI, set the full path in Settings → CLI Path. Find it with `which copilot`.
-
-**"env: node: No such file or directory"**
-Obsidian (Electron) doesn't inherit your shell PATH. The plugin adds common bin directories automatically, but if Node is in an unusual location, ensure `/path/to/node/bin` is in your system PATH or set the CLI path to the full `copilot` binary path.
-
-**Sidebar not appearing**
-Use the command palette (`Cmd/Ctrl + P`) → "Open Copilot Chat". If it still doesn't appear, try disabling and re-enabling the plugin.
-
-**Permission prompts keep appearing**
-Choose "Allow This Session" or "Always Allow" to skip repeated prompts for the same action. You can clear permanent permissions from browser dev tools: `localStorage.removeItem('copilot-permanent-permissions')`.
 
 ## License
 
