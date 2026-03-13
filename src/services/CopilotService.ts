@@ -34,10 +34,47 @@ export class CopilotService {
     this.currentMode = settings.defaultMode;
   }
 
+  /**
+   * Resolve the Copilot CLI path. Electron apps don't inherit the shell PATH,
+   * so we probe common install locations when the default "copilot" fails.
+   */
+  private async resolveCliPath(): Promise<string> {
+    const configured = this.settings.cliPath;
+    if (configured && configured !== "copilot") {
+      return configured;
+    }
+
+    // Common install locations on macOS / Linux / Windows
+    const candidates = [
+      "/opt/homebrew/bin/copilot",
+      "/usr/local/bin/copilot",
+      "/usr/bin/copilot",
+      `${process.env.HOME}/.npm-global/bin/copilot`,
+      `${process.env.HOME}/.local/bin/copilot`,
+      // nvm / fnm managed node
+      `${process.env.HOME}/.nvm/versions/node/${process.version}/bin/copilot`,
+      // Windows
+      `${process.env.LOCALAPPDATA}\\npm\\copilot.cmd`,
+      `${process.env.APPDATA}\\npm\\copilot.cmd`,
+    ];
+
+    const { existsSync } = await import("fs");
+    for (const candidate of candidates) {
+      if (candidate && existsSync(candidate)) {
+        console.log(`[Copilot] Found CLI at ${candidate}`);
+        return candidate;
+      }
+    }
+
+    // Fall back to bare name and let the SDK try PATH
+    return "copilot";
+  }
+
   async initialize(): Promise<void> {
     try {
+      const cliPath = await this.resolveCliPath();
       this.client = new CopilotClient({
-        cliPath: this.settings.cliPath || undefined,
+        cliPath,
         logLevel: this.settings.logLevel === "warn" ? "warning" : this.settings.logLevel,
       });
       await this.client.start();
