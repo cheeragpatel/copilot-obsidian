@@ -14,6 +14,7 @@ import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
 export const CopilotChatPanel: React.FC = () => {
   const ctx = useContext(PluginContext);
   const initialized = useRef(false);
+  const initPromise = useRef<Promise<void> | null>(null);
   const commandRegistry = useRef(new SlashCommandRegistry());
   const {
     messages,
@@ -69,7 +70,7 @@ export const CopilotChatPanel: React.FC = () => {
       }
     };
 
-    initService();
+    initPromise.current = initService();
   }, [ctx]);
 
   useEffect(() => {
@@ -119,6 +120,11 @@ export const CopilotChatPanel: React.FC = () => {
   const handleSend = useCallback(
     async (text: string) => {
       if (!ctx || !text.trim()) return;
+
+      // Wait for initialization to complete before sending
+      if (initPromise.current) {
+        await initPromise.current;
+      }
 
       let actualPrompt = text.trim();
       let displayText = text.trim();
@@ -190,6 +196,7 @@ export const CopilotChatPanel: React.FC = () => {
   const handleModeSwitch = useCallback(
     async (mode: ChatMode) => {
       if (!ctx) return;
+      if (initPromise.current) await initPromise.current;
       setMode(mode);
       try {
         const tools = mode === ChatMode.Agent ? createVaultTools(ctx.app) : undefined;
@@ -204,6 +211,7 @@ export const CopilotChatPanel: React.FC = () => {
 
   const handleNewConversation = useCallback(async () => {
     if (!ctx) return;
+    if (initPromise.current) await initPromise.current;
     newConversation();
     try {
       const tools =
