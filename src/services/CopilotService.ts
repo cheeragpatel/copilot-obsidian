@@ -74,9 +74,36 @@ export class CopilotService {
     return "copilot";
   }
 
+  /**
+   * Ensure common bin directories are in PATH so the CLI's
+   * `#!/usr/bin/env node` shebang can find the node binary.
+   */
+  private ensurePath(): void {
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const extraPaths = [
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      `${home}/.npm-global/bin`,
+      `${home}/.local/bin`,
+      `${home}/.nvm/versions/node/${process.version}/bin`,
+    ].filter(Boolean);
+
+    const currentPath = process.env.PATH || "";
+    const missing = extraPaths.filter((p) => !currentPath.includes(p));
+    if (missing.length > 0) {
+      process.env.PATH = [...missing, currentPath].join(":");
+    }
+  }
+
   async initialize(): Promise<void> {
     try {
       const cliPath = this.resolveCliPath();
+
+      // Electron doesn't inherit the user's shell PATH, so node/copilot
+      // aren't found. Augment PATH with common bin directories.
+      this.ensurePath();
+
       this.client = new CopilotClient({
         cliPath,
         logLevel: this.settings.logLevel === "warn" ? "warning" : this.settings.logLevel,
