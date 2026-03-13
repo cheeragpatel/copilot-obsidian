@@ -27,6 +27,7 @@ export interface PluginSettings {
   mcpServers: MCPServerEntry[];
   customAgents: CustomAgentEntry[];
   skillDirectories: string[];
+  inheritConfig: boolean;
   disabledSkills: string[];
   excludedTools: string[];
   systemMessage: string;
@@ -41,7 +42,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   defaultMode: ChatMode.Ask,
   mcpServers: [],
   customAgents: [],
-  skillDirectories: [],
+  skillDirectories: [".github/skills", ".copilot/skills"],
+  inheritConfig: true,
   disabledSkills: [],
   excludedTools: [],
   systemMessage: "",

@@ -11,6 +11,7 @@ describe("src/types/settings", () => {
     mcpServers: true,
     customAgents: true,
     skillDirectories: true,
+    inheritConfig: true,
     disabledSkills: true,
     excludedTools: true,
     systemMessage: true,
@@ -28,7 +29,8 @@ describe("src/types/settings", () => {
       defaultMode: ChatMode.Ask,
       mcpServers: [],
       customAgents: [],
-      skillDirectories: [],
+      skillDirectories: [".github/skills", ".copilot/skills"],
+      inheritConfig: true,
       disabledSkills: [],
       excludedTools: [],
       systemMessage: "",
@@ -62,6 +64,10 @@ describe("src/types/settings", () => {
   it("defaults customAgents to an empty array", () => {
     expect(DEFAULT_SETTINGS.customAgents).toEqual([]);
     expect(DEFAULT_SETTINGS.customAgents).toHaveLength(0);
+  });
+
+  it("defaults inheritConfig to true", () => {
+    expect(DEFAULT_SETTINGS.inheritConfig).toBe(true);
   });
 
   it('defaults logLevel to "info"', () => {

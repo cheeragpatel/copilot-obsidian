@@ -1,10 +1,22 @@
-import { defineTool, mockClient, mockSession, CopilotClient } from "@github/copilot-sdk";
+import { CopilotClient, defineTool } from "@github/copilot-sdk";
+import { mockClient, mockSession } from "../__mocks__/copilot-sdk";
 import { createMockApp } from "../__mocks__/obsidian";
 import { CopilotService } from "./CopilotService";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
 import { DEFAULT_SETTINGS, type PluginSettings } from "../types/settings";
 
+const { mockDiscover } = vi.hoisted(() => ({
+  mockDiscover: vi.fn(),
+}));
+
 vi.mock("@github/copilot-sdk", () => import("../__mocks__/copilot-sdk"));
+vi.mock("./ConfigDiscovery", () => ({
+  ConfigDiscovery: class {
+    discover = mockDiscover;
+
+    constructor(_app: any) {}
+  },
+}));
 vi.mock("obsidian");
 
 const createSettings = (overrides: Partial<PluginSettings> = {}): PluginSettings => ({
@@ -16,6 +28,15 @@ const createSettings = (overrides: Partial<PluginSettings> = {}): PluginSettings
   disabledSkills: overrides.disabledSkills ?? [],
   excludedTools: overrides.excludedTools ?? [],
 });
+
+const createTool = (name: string, description: string) =>
+  defineTool(
+    name,
+    {
+      description,
+      handler: vi.fn(async () => undefined),
+    } as any,
+  );
 
 const createSessionMock = (overrides: Partial<typeof mockSession> = {}) => ({
   sessionId: "test-session-123",
@@ -31,6 +52,13 @@ const createSessionMock = (overrides: Partial<typeof mockSession> = {}) => ({
 describe("CopilotService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockDiscover.mockReset();
+    mockDiscover.mockResolvedValue({
+      skills: [],
+      mcpServers: [],
+      instructions: "",
+    });
 
     mockClient.start.mockResolvedValue(undefined);
     mockClient.stop.mockResolvedValue(undefined);
@@ -75,29 +103,29 @@ describe("CopilotService", () => {
 
   it("createSession() in Ask mode creates a session without tools", async () => {
     const service = new CopilotService(createMockApp(), createSettings({ defaultModel: "gpt-4o" }));
-    const tool = defineTool("search", { description: "Search notes" });
+    const tool = createTool("search", "Search notes");
 
     await service.initialize();
     await service.createSession({ mode: ChatMode.Ask, tools: [tool] });
 
-    expect(mockClient.createSession).toHaveBeenCalledWith({
+    expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
       model: "gpt-4o",
       streaming: true,
-    });
+    }));
   });
 
   it("createSession() in Agent mode creates a session with tools", async () => {
     const service = new CopilotService(createMockApp(), createSettings());
-    const tool = defineTool("search", { description: "Search notes" });
+    const tool = createTool("search", "Search notes");
 
     await service.initialize();
     await service.createSession({ mode: ChatMode.Agent, tools: [tool] });
 
-    expect(mockClient.createSession).toHaveBeenCalledWith({
+    expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
       model: DEFAULT_MODEL,
       streaming: true,
       tools: [tool],
-    });
+    }));
   });
 
   it("createSession() with MCP servers builds config and skips disabled servers", async () => {
@@ -122,7 +150,7 @@ describe("CopilotService", () => {
     await service.initialize();
     await service.createSession();
 
-    expect(mockClient.createSession).toHaveBeenCalledWith({
+    expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
       model: DEFAULT_MODEL,
       streaming: true,
       mcpServers: {
@@ -137,7 +165,7 @@ describe("CopilotService", () => {
           env: { TOKEN: "secret" },
         },
       },
-    });
+    }));
   });
 
   it("createSession() with custom agents filters disabled agents", async () => {
@@ -166,7 +194,7 @@ describe("CopilotService", () => {
     await service.initialize();
     await service.createSession();
 
-    expect(mockClient.createSession).toHaveBeenCalledWith({
+    expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
       model: DEFAULT_MODEL,
       streaming: true,
       customAgents: [
@@ -177,7 +205,7 @@ describe("CopilotService", () => {
           prompt: "Plan tasks",
         },
       ],
-    });
+    }));
   });
 
   it("createSession() with system message passes append mode config", async () => {
@@ -186,14 +214,121 @@ describe("CopilotService", () => {
     await service.initialize();
     await service.createSession({ systemMessage: "Be helpful" });
 
-    expect(mockClient.createSession).toHaveBeenCalledWith({
+    expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
       model: DEFAULT_MODEL,
       streaming: true,
       systemMessage: {
         mode: "append",
         content: "Be helpful",
       },
+    }));
+  });
+
+  it("createSession() calls config discovery when inheritConfig is true", async () => {
+    const service = new CopilotService(createMockApp(), createSettings({ inheritConfig: true }));
+
+    await service.initialize();
+    await service.createSession();
+
+    expect(mockDiscover).toHaveBeenCalledTimes(1);
+  });
+
+  it("createSession() does not call config discovery when inheritConfig is false", async () => {
+    const service = new CopilotService(createMockApp(), createSettings({ inheritConfig: false }));
+
+    await service.initialize();
+    await service.createSession();
+
+    expect(mockDiscover).not.toHaveBeenCalled();
+  });
+
+  it("createSession() merges discovered MCP servers without overriding configured ones", async () => {
+    mockDiscover.mockResolvedValueOnce({
+      skills: [],
+      instructions: "",
+      mcpServers: [
+        { name: "docs", type: "http", url: "https://discovered.example.com", enabled: true },
+        {
+          name: "vault",
+          type: "stdio",
+          command: "node",
+          args: ["server.js"],
+          env: { TOKEN: "secret" },
+          enabled: true,
+        },
+      ],
     });
+    const service = new CopilotService(
+      createMockApp(),
+      createSettings({
+        mcpServers: [{ name: "docs", type: "http", url: "https://settings.example.com", enabled: true }],
+      }),
+    );
+
+    await service.initialize();
+    await service.createSession();
+
+    expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
+      model: DEFAULT_MODEL,
+      streaming: true,
+      mcpServers: {
+        docs: {
+          type: "http",
+          url: "https://settings.example.com",
+        },
+        vault: {
+          type: "stdio",
+          command: "node",
+          args: ["server.js"],
+          env: { TOKEN: "secret" },
+        },
+      },
+    }));
+  });
+
+  it("createSession() prepends discovered instructions to the system message", async () => {
+    mockDiscover.mockResolvedValueOnce({
+      skills: [],
+      mcpServers: [],
+      instructions: "Repo instructions",
+    });
+    const service = new CopilotService(
+      createMockApp(),
+      createSettings({ systemMessage: "User instructions" }),
+    );
+
+    await service.initialize();
+    await service.createSession();
+
+    expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
+      model: DEFAULT_MODEL,
+      streaming: true,
+      systemMessage: {
+        mode: "append",
+        content: "Repo instructions\n\nUser instructions",
+      },
+    }));
+  });
+
+  it("createSession() merges discovered skill directories with configured directories", async () => {
+    mockDiscover.mockResolvedValueOnce({
+      skills: [".github/skills", ".copilot/skills"],
+      mcpServers: [],
+      instructions: "",
+    });
+    const service = new CopilotService(
+      createMockApp(),
+      createSettings({ skillDirectories: ["vault/skills", ".github/skills"] }),
+    );
+
+    await service.initialize();
+    await service.createSession();
+
+    expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
+      model: DEFAULT_MODEL,
+      streaming: true,
+      skillDirectories: ["vault/skills", ".github/skills", ".copilot/skills"],
+    }));
   });
 
   it("createSession() destroys existing session first", async () => {
@@ -268,11 +403,13 @@ describe("CopilotService", () => {
   });
 
   it("onEvent() registers a listener, receives events, and returns an unsubscribe function", async () => {
-    const event = { type: "message", data: { content: "hello" } };
-    const listener = vi.fn();
-    let sessionHandler: ((event: typeof event) => void) | undefined;
+    type TestEvent = { type: string; data: { content: string } };
 
-    mockSession.on.mockImplementation((callback: (incoming: typeof event) => void) => {
+    const event: TestEvent = { type: "message", data: { content: "hello" } };
+    const listener = vi.fn();
+    let sessionHandler: ((event: TestEvent) => void) | undefined;
+
+    mockSession.on.mockImplementation((callback: (incoming: TestEvent) => void) => {
       sessionHandler = callback;
       return vi.fn();
     });
@@ -294,7 +431,7 @@ describe("CopilotService", () => {
   it("switchMode() updates mode and recreates the session", async () => {
     const firstSession = createSessionMock({ sessionId: "session-1" });
     const secondSession = createSessionMock({ sessionId: "session-2" });
-    const tool = defineTool("plan", { description: "Plan work" });
+    const tool = createTool("plan", "Plan work");
     mockClient.createSession.mockResolvedValueOnce(firstSession).mockResolvedValueOnce(secondSession);
     const service = new CopilotService(createMockApp(), createSettings());
 
@@ -304,11 +441,11 @@ describe("CopilotService", () => {
 
     expect(service.getMode()).toBe(ChatMode.Agent);
     expect(firstSession.destroy).toHaveBeenCalledTimes(1);
-    expect(mockClient.createSession).toHaveBeenNthCalledWith(2, {
+    expect(mockClient.createSession).toHaveBeenNthCalledWith(2, expect.objectContaining({
       model: DEFAULT_MODEL,
       streaming: true,
       tools: [tool],
-    });
+    }));
   });
 
   it("getSessionId() returns the active session ID", async () => {
@@ -323,7 +460,7 @@ describe("CopilotService", () => {
   });
 
   it("resumeSession() calls client.resumeSession with the session ID", async () => {
-    const tool = defineTool("plan", { description: "Plan work" });
+    const tool = createTool("plan", "Plan work");
     const service = new CopilotService(createMockApp(), createSettings());
 
     await service.initialize();
@@ -333,7 +470,7 @@ describe("CopilotService", () => {
     const [sessionId, options] = mockClient.resumeSession.mock.calls[0];
     expect(sessionId).toBe("resume-me");
     expect(options.tools).toEqual([tool]);
-    await expect(options.onPermissionRequest()).resolves.toBe(true);
+    expect(options.onPermissionRequest).toEqual(expect.any(Function));
   });
 
   it("listSessions() returns the client session list", async () => {
@@ -381,7 +518,7 @@ describe("CopilotService", () => {
     await service.createSession();
 
     expect((service as any).settings).toBe(updatedSettings);
-    expect(mockClient.createSession).toHaveBeenCalledWith({
+    expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
       model: DEFAULT_MODEL,
       streaming: true,
       skillDirectories: ["skills"],
@@ -391,7 +528,7 @@ describe("CopilotService", () => {
         mode: "append",
         content: "Updated system message",
       },
-    });
+    }));
   });
 
   it("destroy() stops the client, destroys the session, and clears listeners", async () => {

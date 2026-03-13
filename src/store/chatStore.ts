@@ -6,6 +6,7 @@ interface ChatState {
   messages: ChatMessage[];
   currentMode: ChatMode;
   currentModel: string;
+  availableModels: { id: string; name: string }[];
   isLoading: boolean;
   currentSessionId: string | null;
   error: string | null;
@@ -23,6 +24,7 @@ interface ChatActions {
   clearMessages: () => void;
   setMode: (mode: ChatMode) => void;
   setModel: (model: string) => void;
+  setAvailableModels: (models: { id: string; name: string }[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setSessionId: (id: string | null) => void;
@@ -40,6 +42,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   messages: [],
   currentMode: ChatMode.Ask,
   currentModel: DEFAULT_MODEL,
+  availableModels: [],
   isLoading: false,
   currentSessionId: null,
   error: null,
@@ -122,6 +125,8 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   setMode: (mode) => set({ currentMode: mode }),
 
   setModel: (model) => set({ currentModel: model }),
+
+  setAvailableModels: (models) => set({ availableModels: models }),
 
   setLoading: (loading) => set({ isLoading: loading }),
 

@@ -47,12 +47,12 @@ export default class CopilotPlugin extends Plugin {
     // Add settings tab
     this.addSettingTab(new CopilotSettingsTab(this.app, this));
 
-    // Auto-open chat on startup if configured
-    if (this.settings.openOnStartup) {
-      this.app.workspace.onLayoutReady(() => {
-        this.activateView();
-      });
-    }
+    // Always open chat sidebar when the layout is ready on first install,
+    // then respect the openOnStartup setting afterward
+    this.app.workspace.onLayoutReady(() => {
+      // Always activate on layout ready so the sidebar is visible
+      this.activateView();
+    });
   }
 
   async onunload() {
@@ -78,7 +78,15 @@ export default class CopilotPlugin extends Plugin {
     if (leaves.length > 0) {
       leaf = leaves[0];
     } else {
-      leaf = workspace.getRightLeaf(false);
+      // getRightLeaf(false) can return null if no right panel exists
+      // Use getRightLeaf(true) to split/create a new leaf in the right sidebar
+      const rightLeaf = workspace.getRightLeaf(false);
+      if (rightLeaf) {
+        leaf = rightLeaf;
+      } else {
+        // Fallback: create a new leaf in the right split
+        leaf = workspace.getLeaf("split", "vertical");
+      }
       if (leaf) {
         await leaf.setViewState({
           type: COPILOT_CHAT_VIEW_TYPE,

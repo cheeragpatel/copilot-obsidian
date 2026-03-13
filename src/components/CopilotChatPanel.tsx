@@ -29,6 +29,7 @@ export const CopilotChatPanel: React.FC = () => {
     setSessionId,
     clearMessages,
     setMode,
+    setAvailableModels,
     newConversation,
   } = useChatStore();
 
@@ -39,6 +40,17 @@ export const CopilotChatPanel: React.FC = () => {
     const initService = async () => {
       try {
         await ctx.copilotService.initialize();
+
+        // Fetch available models dynamically from the SDK
+        try {
+          const models = await ctx.copilotService.getAvailableModels();
+          if (models.length > 0) {
+            setAvailableModels(models);
+          }
+        } catch {
+          // Non-fatal: fall back to static model list
+        }
+
         const tools =
           ctx.settings.defaultMode === ChatMode.Agent
             ? createVaultTools(ctx.app)

@@ -585,3 +585,47 @@
   background: var(--color-yellow);
   animation: copilot-blink 1s step-end infinite;
 }
+
+/* ── Permission Modal ── */
+
+.copilot-permission-modal {
+  max-width: 500px;
+}
+
+.copilot-permission-modal h3 {
+  margin-bottom: 12px;
+  color: var(--text-normal);
+}
+
+.copilot-permission-description {
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.copilot-permission-details {
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.copilot-permission-details pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85em;
+}
+
+.copilot-permission-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.copilot-permission-buttons button {
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}

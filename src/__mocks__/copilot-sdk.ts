@@ -19,6 +19,11 @@ export const mockClient = {
   deleteSession: vi.fn().mockResolvedValue(undefined),
   getState: vi.fn().mockReturnValue("connected"),
   ping: vi.fn().mockResolvedValue({ timestamp: Date.now() }),
+  listModels: vi.fn().mockResolvedValue([
+    { id: "claude-sonnet-4.6", name: "Claude Sonnet 4.6" },
+    { id: "claude-opus-4.6", name: "Claude Opus 4.6" },
+    { id: "gpt-4.1", name: "GPT 4.1" },
+  ]),
 };
 
 export class CopilotClient {
@@ -33,11 +38,14 @@ export class CopilotClient {
   deleteSession = mockClient.deleteSession;
   getState = mockClient.getState;
   ping = mockClient.ping;
+  listModels = mockClient.listModels;
 }
 
 export function defineTool(name: string, config: any) {
   return { name, ...config };
 }
+
+export const approveAll = () => ({ kind: "approved" });
 
 export type SessionEvent = {
   type: string;

@@ -48,6 +48,7 @@ function createApp(overrides: Record<string, any> = {}) {
       getActiveFile: vi.fn().mockReturnValue(null),
       getLeavesOfType: vi.fn().mockReturnValue([]),
       getRightLeaf: vi.fn().mockReturnValue(createWorkspaceLeaf()),
+      getLeaf: vi.fn().mockReturnValue(createWorkspaceLeaf()),
       revealLeaf: vi.fn(),
       detachLeavesOfType: vi.fn(),
       onLayoutReady: vi.fn((cb: () => void) => cb()),
@@ -175,22 +176,21 @@ describe("CopilotPlugin", () => {
     );
   });
 
-  it("onload() auto-opens chat when configured", async () => {
+  it("onload() always auto-opens chat when layout is ready", async () => {
     const { plugin, app } = createPlugin();
-    vi.mocked(plugin.loadData).mockResolvedValue({ openOnStartup: true });
     const activateViewSpy = vi
       .spyOn(plugin, "activateView")
       .mockResolvedValue(undefined);
 
     await plugin.onload();
 
-    expect(plugin.settings.openOnStartup).toBe(true);
     expect(app.workspace.onLayoutReady).toHaveBeenCalledTimes(1);
     expect(activateViewSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("onload() does not auto-open by default", async () => {
+  it("onload() auto-opens even when openOnStartup is false", async () => {
     const { plugin, app } = createPlugin();
+    vi.mocked(plugin.loadData).mockResolvedValue({ openOnStartup: false });
     const activateViewSpy = vi
       .spyOn(plugin, "activateView")
       .mockResolvedValue(undefined);
@@ -198,8 +198,8 @@ describe("CopilotPlugin", () => {
     await plugin.onload();
 
     expect(plugin.settings.openOnStartup).toBe(false);
-    expect(app.workspace.onLayoutReady).not.toHaveBeenCalled();
-    expect(activateViewSpy).not.toHaveBeenCalled();
+    expect(app.workspace.onLayoutReady).toHaveBeenCalledTimes(1);
+    expect(activateViewSpy).toHaveBeenCalledTimes(1);
   });
 
   it("onunload() destroys service", async () => {
@@ -226,23 +226,25 @@ describe("CopilotPlugin", () => {
     );
   });
 
-  it("activateView() creates new leaf", async () => {
-    const leaf = createWorkspaceLeaf();
+  it("activateView() creates new leaf with fallback when getRightLeaf returns null", async () => {
+    const fallbackLeaf = createWorkspaceLeaf();
     const { plugin, app } = createPlugin({
       workspace: {
         getLeavesOfType: vi.fn().mockReturnValue([]),
-        getRightLeaf: vi.fn().mockReturnValue(leaf),
+        getRightLeaf: vi.fn().mockReturnValue(null),
+        getLeaf: vi.fn().mockReturnValue(fallbackLeaf),
       },
     });
 
     await CopilotPlugin.prototype.activateView.call(plugin);
 
     expect(app.workspace.getRightLeaf).toHaveBeenCalledWith(false);
-    expect(leaf.setViewState).toHaveBeenCalledWith({
+    expect(app.workspace.getLeaf).toHaveBeenCalledWith("split", "vertical");
+    expect(fallbackLeaf.setViewState).toHaveBeenCalledWith({
       type: COPILOT_CHAT_VIEW_TYPE,
       active: true,
     });
-    expect(app.workspace.revealLeaf).toHaveBeenCalledWith(leaf);
+    expect(app.workspace.revealLeaf).toHaveBeenCalledWith(fallbackLeaf);
   });
 
   it("activateView() reuses existing leaf", async () => {

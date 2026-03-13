@@ -80,6 +80,18 @@ export class CopilotSettingsTab extends PluginSettingTab {
         });
       });
 
+    new Setting(containerEl)
+      .setName("Auto-discover configuration")
+      .setDesc(
+        "Automatically load skills, MCP servers, and instructions from .github/ and .copilot/ directories in your vault",
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.inheritConfig).onChange(async (value) => {
+          this.settings.inheritConfig = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
     // ── MCP Servers ──
     containerEl.createEl("h2", { text: "MCP Servers" });
     containerEl.createEl("p", {
@@ -172,7 +184,7 @@ export class CopilotSettingsTab extends PluginSettingTab {
       .setDesc("Comma-separated list of directories containing skill definitions")
       .addTextArea((text) =>
         text
-          .setPlaceholder("/path/to/skills")
+          .setPlaceholder(".github/skills, .copilot/skills")
           .setValue(this.settings.skillDirectories.join(", "))
           .onChange(async (value) => {
             this.settings.skillDirectories = value

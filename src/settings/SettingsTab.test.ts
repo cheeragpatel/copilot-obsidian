@@ -246,13 +246,14 @@ describe("CopilotSettingsTab", () => {
 
     expect(tab.containerEl.empty).toHaveBeenCalledTimes(1);
     expect(getSectionHeadings(tab)).toContain("General");
-    expect(settingInstances).toHaveLength(12);
+    expect(settingInstances).toHaveLength(13);
     expect(tab.containerEl.createEl).toHaveBeenCalledTimes(7);
     expect(getSetting("Copilot CLI path").textControl.placeholder).toBe("copilot");
     expect(getSetting("Default model").dropdownControl.value).toBe(plugin.settings.defaultModel);
     expect(getSetting("Streaming responses").toggleControl.value).toBe(plugin.settings.streaming);
     expect(getSetting("Open chat on startup").toggleControl.value).toBe(plugin.settings.openOnStartup);
     expect(getSetting("Default mode").dropdownControl.value).toBe(plugin.settings.defaultMode);
+    expect(getSetting("Auto-discover configuration").toggleControl.value).toBe(plugin.settings.inheritConfig);
   });
 
   it("display() renders MCP Servers section", () => {
@@ -286,6 +287,7 @@ describe("CopilotSettingsTab", () => {
 
     expect(getSectionHeadings(tab)).toContain("Skills");
     expect(getSetting("Skill directories").textAreaControl.value).toBe("/skills/one, /skills/two");
+    expect(getSetting("Skill directories").textAreaControl.placeholder).toBe(".github/skills, .copilot/skills");
     expect(getSetting("Disabled skills").textAreaControl.value).toBe("skill-a, skill-b");
   });
 
@@ -372,7 +374,10 @@ describe("CopilotSettingsTab", () => {
     await getSetting("Default mode").dropdownControl.changeHandler("agent");
     expect(plugin.settings.defaultMode).toBe("agent");
 
-    expect(plugin.saveSettings).toHaveBeenCalledTimes(6);
+    await getSetting("Auto-discover configuration").toggleControl.changeHandler(false);
+    expect(plugin.settings.inheritConfig).toBe(false);
+
+    expect(plugin.saveSettings).toHaveBeenCalledTimes(7);
   });
 
   it("updates skill and advanced settings when control callbacks fire", async () => {

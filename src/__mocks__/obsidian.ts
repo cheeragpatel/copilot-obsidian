@@ -63,6 +63,28 @@ export class Notice {
   constructor(message: string, timeout?: number) {}
 }
 
+export class Modal {
+  app: any;
+  contentEl: any;
+  containerEl: any;
+
+  constructor(app: any) {
+    this.app = app;
+    this.contentEl = {
+      empty: vi.fn(),
+      addClass: vi.fn(),
+      createEl: vi.fn().mockReturnValue(document.createElement("div")),
+      createDiv: vi.fn().mockReturnValue(document.createElement("div")),
+    };
+    this.containerEl = document.createElement("div");
+  }
+
+  open = vi.fn();
+  close = vi.fn();
+  onOpen(): void {}
+  onClose(): void {}
+}
+
 export class Setting {
   settingEl: HTMLElement;
   
@@ -111,6 +133,7 @@ export function createMockApp(overrides: any = {}): any {
       getActiveFile: vi.fn().mockReturnValue(null),
       getLeavesOfType: vi.fn().mockReturnValue([]),
       getRightLeaf: vi.fn().mockReturnValue(new WorkspaceLeaf()),
+      getLeaf: vi.fn().mockReturnValue(new WorkspaceLeaf()),
       revealLeaf: vi.fn(),
       detachLeavesOfType: vi.fn(),
       onLayoutReady: vi.fn((cb: any) => cb()),

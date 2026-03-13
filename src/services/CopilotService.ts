@@ -1,8 +1,10 @@
 import { CopilotClient, defineTool, SessionEvent } from "@github/copilot-sdk";
 import type { App } from "obsidian";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
-import type { PluginSettings, MCPServerEntry, CustomAgentEntry } from "../types/settings";
+import type { PluginSettings } from "../types/settings";
 import type { ToolCallInfo } from "../types/chat";
+import { ConfigDiscovery } from "./ConfigDiscovery";
+import { promptPermission } from "../views/PermissionModal";
 
 type EventCallback = (event: SessionEvent) => void;
 
@@ -63,8 +65,44 @@ export class CopilotService {
     const mode = options.mode || this.currentMode;
     this.currentMode = mode;
 
+    // Auto-discover config from .github/ and .copilot/ directories
+    let discoveredConfig = {
+      skills: [] as string[],
+      mcpServers: [] as any[],
+      instructions: "",
+    };
+
+    if (this.settings.inheritConfig) {
+      const discovery = new ConfigDiscovery(this.app);
+      discoveredConfig = await discovery.discover();
+    }
+
     // Build MCP server config from settings
-    const mcpServers = options.mcpServers || this.buildMCPConfig();
+    const mcpServers = { ...(options.mcpServers || this.buildMCPConfig()) };
+
+    // Merge discovered MCP servers (settings take precedence by name)
+    for (const discovered of discoveredConfig.mcpServers) {
+      if (!mcpServers[discovered.name]) {
+        if (discovered.type === "http") {
+          mcpServers[discovered.name] = {
+            type: "http",
+            url: discovered.url,
+          };
+        } else if (discovered.type === "stdio") {
+          mcpServers[discovered.name] = {
+            type: "stdio",
+            command: discovered.command,
+            args: discovered.args || [],
+            env: discovered.env || {},
+          };
+        }
+      }
+    }
+
+    const allSkillDirs = [...new Set([
+      ...this.settings.skillDirectories,
+      ...discoveredConfig.skills,
+    ])];
 
     // Build custom agents config
     const customAgents = options.customAgents || this.buildAgentsConfig();
@@ -73,6 +111,7 @@ export class CopilotService {
     const sessionConfig: any = {
       model,
       streaming: this.settings.streaming,
+      onPermissionRequest: (request: any) => promptPermission(this.app, request),
     };
 
     // Add tools in agent mode
@@ -91,8 +130,9 @@ export class CopilotService {
     }
 
     // Add skill directories
-    if (this.settings.skillDirectories.length > 0) {
-      sessionConfig.skillDirectories = options.skillDirectories || this.settings.skillDirectories;
+    const skillDirectories = options.skillDirectories || allSkillDirs;
+    if (skillDirectories.length > 0) {
+      sessionConfig.skillDirectories = skillDirectories;
     }
 
     // Add disabled skills
@@ -107,10 +147,14 @@ export class CopilotService {
 
     // Add system message
     const systemMsg = options.systemMessage || this.settings.systemMessage;
-    if (systemMsg) {
+    const combinedSystemMsg = [discoveredConfig.instructions, systemMsg]
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (combinedSystemMsg) {
       sessionConfig.systemMessage = {
         mode: "append",
-        content: systemMsg,
+        content: combinedSystemMsg,
       };
     }
 
@@ -184,8 +228,8 @@ export class CopilotService {
 
     this.session = await this.client.resumeSession(sessionId, {
       tools: tools || [],
-      onPermissionRequest: async () => true,
-    } as any);
+      onPermissionRequest: (request: any) => promptPermission(this.app, request),
+    });
 
     this.session.on((event: SessionEvent) => {
       for (const listener of this.eventListeners) {
@@ -204,11 +248,11 @@ export class CopilotService {
     await this.client.deleteSession(sessionId);
   }
 
-  async getAvailableModels(): Promise<string[]> {
+  async getAvailableModels(): Promise<{ id: string; name: string }[]> {
     if (!this.client) return [];
     try {
-      // listModels may not be available in all SDK versions
-      return await (this.client as any).listModels?.() ?? [];
+      const models = await this.client.listModels();
+      return models.map((m: any) => ({ id: m.id, name: m.name || m.id }));
     } catch {
       return [];
     }

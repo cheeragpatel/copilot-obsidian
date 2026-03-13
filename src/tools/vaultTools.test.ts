@@ -1,13 +1,42 @@
+import { createVaultTools } from "./vaultTools";
+
 vi.mock("obsidian");
 vi.mock("@github/copilot-sdk", () => ({
   defineTool: (name: string, config: any) => ({ name, ...config }),
 }));
 
-const { createMockApp, TFile } = await vi.importActual<typeof import("../__mocks__/obsidian")>(
-  "../__mocks__/obsidian",
-);
+class TFile {
+  path: string;
+  basename: string;
+  stat: { size: number; mtime: number; ctime: number };
 
-import { createVaultTools } from "./vaultTools";
+  constructor(path: string) {
+    this.path = path;
+    this.basename = path.split("/").pop()?.replace(".md", "") || "";
+    this.stat = { size: 100, mtime: Date.now(), ctime: Date.now() };
+  }
+}
+
+function createMockApp() {
+  return {
+    workspace: {
+      getActiveFile: vi.fn().mockReturnValue(null),
+    },
+    vault: {
+      getAbstractFileByPath: vi.fn().mockReturnValue(null),
+      getFileByPath: vi.fn().mockReturnValue(null),
+      getMarkdownFiles: vi.fn().mockReturnValue([]),
+      cachedRead: vi.fn().mockResolvedValue(""),
+      read: vi.fn().mockResolvedValue(""),
+      create: vi.fn().mockResolvedValue(undefined),
+      createFolder: vi.fn().mockResolvedValue(undefined),
+      modify: vi.fn().mockResolvedValue(undefined),
+    },
+    metadataCache: {
+      getFileCache: vi.fn().mockReturnValue(null),
+    },
+  };
+}
 
 describe("createVaultTools", () => {
   let mockApp: any;
@@ -58,7 +87,9 @@ describe("createVaultTools", () => {
       };
 
       mockApp.vault.getMarkdownFiles.mockReturnValue([alpha, beta]);
-      mockApp.vault.cachedRead.mockImplementation(async (file: TFile) => contents[file.path]);
+      mockApp.vault.cachedRead.mockImplementation(
+        async (file: InstanceType<typeof TFile>) => contents[file.path],
+      );
 
       const searchVault = getTool("search_vault");
       const result = await searchVault.handler({ query: "vault tools" });
@@ -95,7 +126,9 @@ describe("createVaultTools", () => {
       };
 
       mockApp.vault.getMarkdownFiles.mockReturnValue([first, second, third]);
-      mockApp.vault.cachedRead.mockImplementation(async (file: TFile) => contents[file.path]);
+      mockApp.vault.cachedRead.mockImplementation(
+        async (file: InstanceType<typeof TFile>) => contents[file.path],
+      );
 
       const searchVault = getTool("search_vault");
       const result = await searchVault.handler({ query: "query", limit: 2 });

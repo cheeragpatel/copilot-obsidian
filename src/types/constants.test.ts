@@ -27,13 +27,15 @@ describe("src/types/constants", () => {
 
   it("lists available models as a non-empty array of strings", () => {
     expect(Array.isArray(AVAILABLE_MODELS)).toBe(true);
-    expect(AVAILABLE_MODELS.length).toBeGreaterThan(0);
+    expect(AVAILABLE_MODELS.length).toBe(15);
     expect(AVAILABLE_MODELS.every((model) => typeof model === "string")).toBe(
       true,
     );
     expect(
       AVAILABLE_MODELS.every((model) => model.trim().length > 0),
     ).toBe(true);
+    expect(AVAILABLE_MODELS).toContain("claude-sonnet-4.6");
+    expect(AVAILABLE_MODELS).toContain("claude-opus-4.6");
   });
 
   it("exports the chat view type as a string", () => {

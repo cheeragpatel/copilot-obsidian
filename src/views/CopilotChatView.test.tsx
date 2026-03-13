@@ -30,7 +30,7 @@ const mockPlugin = {
 describe("CopilotChatView", () => {
   let leaf: any;
   let view: CopilotChatView;
-  let contentContainer: HTMLElement & { empty: ReturnType<typeof vi.fn> };
+  let contentContainer: HTMLElement & { empty: any };
 
   beforeEach(async () => {
     vi.clearAllMocks();
