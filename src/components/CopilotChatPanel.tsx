@@ -30,6 +30,7 @@ export const CopilotChatPanel: React.FC = () => {
     setLastMessageStreaming,
     addToolCall,
     updateToolCall,
+    completeAllToolCalls,
     setLoading,
     setError,
     setSessionId,
@@ -100,6 +101,7 @@ export const CopilotChatPanel: React.FC = () => {
           appendToLastAssistantMessage(event.data.deltaContent);
           break;
         case "assistant.message":
+          completeAllToolCalls();
           setLastMessageStreaming(false);
           setLoading(false);
           break;
@@ -125,6 +127,7 @@ export const CopilotChatPanel: React.FC = () => {
           setLoading(false);
           break;
         case "session.idle":
+          completeAllToolCalls();
           setLoading(false);
           setLastMessageStreaming(false);
           break;

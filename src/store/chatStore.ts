@@ -23,6 +23,7 @@ interface ChatActions {
   setLastMessageStreaming: (isStreaming: boolean) => void;
   addToolCall: (toolCall: ToolCallInfo) => void;
   updateToolCall: (name: string, status: ToolCallInfo["status"], result?: string) => void;
+  completeAllToolCalls: () => void;
   clearMessages: () => void;
   setMode: (mode: ChatMode) => void;
   setModel: (model: string) => void;
@@ -119,6 +120,24 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
             tc.name === name ? { ...tc, status, result } : tc,
           );
           messages[i] = { ...messages[i], toolCalls };
+          break;
+        }
+      }
+      return { messages };
+    }),
+
+  completeAllToolCalls: () =>
+    set((state) => {
+      const messages = [...state.messages];
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === "assistant" && messages[i].toolCalls) {
+          const hasRunning = messages[i].toolCalls!.some((tc) => tc.status === "running");
+          if (hasRunning) {
+            const toolCalls = messages[i].toolCalls!.map((tc) =>
+              tc.status === "running" ? { ...tc, status: "complete" as const } : tc,
+            );
+            messages[i] = { ...messages[i], toolCalls };
+          }
           break;
         }
       }
