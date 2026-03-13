@@ -4,6 +4,7 @@ import { PluginContext } from "../views/CopilotChatView";
 import { useChatStore, generateId } from "../store/chatStore";
 import { ChatMode } from "../types/constants";
 import { createVaultTools } from "../tools/vaultTools";
+import { SlashCommandRegistry } from "../commands/SlashCommandRegistry";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
@@ -13,6 +14,7 @@ import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
 export const CopilotChatPanel: React.FC = () => {
   const ctx = useContext(PluginContext);
   const initialized = useRef(false);
+  const commandRegistry = useRef(new SlashCommandRegistry());
   const {
     messages,
     currentMode,
@@ -31,6 +33,7 @@ export const CopilotChatPanel: React.FC = () => {
     setMode,
     setAvailableModels,
     newConversation,
+    setAgent,
   } = useChatStore();
 
   useEffect(() => {
@@ -117,10 +120,48 @@ export const CopilotChatPanel: React.FC = () => {
     async (text: string) => {
       if (!ctx || !text.trim()) return;
 
+      let actualPrompt = text.trim();
+      let displayText = text.trim();
+
+      const slashMatch = actualPrompt.match(/^\/([\w-]+)\s*(.*)?$/s);
+      if (slashMatch) {
+        const cmdName = slashMatch[1];
+        const cmdArgs = slashMatch[2] || "";
+        const command = commandRegistry.current.get(cmdName);
+
+        if (command) {
+          if (command.requiresActiveNote && !ctx.app.workspace.getActiveFile?.()) {
+            setError(`/${cmdName} requires an active note. Open a note first.`);
+            return;
+          }
+          const built = await command.buildPrompt(ctx.app, cmdArgs);
+          if (!built) {
+            setError(`/${cmdName} could not build prompt. Is a note open?`);
+            return;
+          }
+          actualPrompt = built;
+          displayText = `/${cmdName}${cmdArgs ? " " + cmdArgs : ""}`;
+        }
+      }
+
+      const agentMatch = actualPrompt.match(/@([\w-]+)\s*/);
+      if (agentMatch) {
+        const agentName = agentMatch[1];
+        const agent = ctx.settings.customAgents?.find(
+          (a: any) => a.enabled && a.name === agentName,
+        );
+        if (agent) {
+          setAgent(agentName);
+          actualPrompt =
+            actualPrompt.replace(/@[\w-]+\s*/, "").trim() || `Hello @${agentName}`;
+          displayText = `@${agentName} ${actualPrompt}`;
+        }
+      }
+
       addMessage({
         id: generateId(),
         role: "user",
-        content: text.trim(),
+        content: displayText,
         timestamp: Date.now(),
         isStreaming: false,
       });
@@ -137,7 +178,7 @@ export const CopilotChatPanel: React.FC = () => {
       setError(null);
 
       try {
-        await ctx.copilotService.sendMessage(text.trim());
+        await ctx.copilotService.sendMessage(actualPrompt);
       } catch (err: any) {
         setError(err.message);
         setLoading(false);

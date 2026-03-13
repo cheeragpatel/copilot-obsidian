@@ -32,10 +32,15 @@ export function createPluginContext(
     app: {
       workspace: {
         getActiveFile: vi.fn(),
+        getLeavesOfType: vi.fn().mockReturnValue([]),
+        on: vi.fn().mockReturnValue({}),
+        offref: vi.fn(),
         ...(overrides.app?.workspace ?? {}),
       },
       vault: {
         getMarkdownFiles: vi.fn().mockReturnValue([]),
+        getAllLoadedFiles: vi.fn().mockReturnValue([]),
+        cachedRead: vi.fn().mockResolvedValue(""),
         ...(overrides.app?.vault ?? {}),
       },
       ...(overrides.app ?? {}),

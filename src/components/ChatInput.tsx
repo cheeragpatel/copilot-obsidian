@@ -1,10 +1,21 @@
 import * as React from "react";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useContext } from "react";
+import { PluginContext } from "../views/CopilotChatView";
+import { BUILT_IN_COMMANDS } from "../commands/SlashCommandRegistry";
+import type { CustomAgentEntry } from "../types/settings";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   onAbort: () => void;
   isLoading: boolean;
+}
+
+interface AutocompleteItem {
+  type: "command" | "agent";
+  label: string;
+  description: string;
+  icon: string;
+  value: string;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({
@@ -13,7 +24,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   isLoading,
 }) => {
   const [input, setInput] = useState("");
+  const [autocomplete, setAutocomplete] = useState<AutocompleteItem[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const ctx = useContext(PluginContext);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -23,10 +37,71 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   }, [input]);
 
+  useEffect(() => {
+    const items: AutocompleteItem[] = [];
+
+    const slashMatch = input.match(/^\/([\w-]*)$/);
+    if (slashMatch) {
+      const partial = slashMatch[1].toLowerCase();
+      const matches = BUILT_IN_COMMANDS.filter(
+        (cmd) =>
+          cmd.name.startsWith(partial) ||
+          cmd.description.toLowerCase().includes(partial),
+      );
+      for (const cmd of matches) {
+        items.push({
+          type: "command",
+          label: `/${cmd.name}`,
+          description: cmd.description,
+          icon: cmd.icon,
+          value: `/${cmd.name} `,
+        });
+      }
+    }
+
+    const atMatch = input.match(/@([\w-]*)$/);
+    if (atMatch && ctx?.settings?.customAgents) {
+      const partial = atMatch[1].toLowerCase();
+      const agents: CustomAgentEntry[] = ctx.settings.customAgents.filter(
+        (a: CustomAgentEntry) =>
+          a.enabled &&
+          (a.name.toLowerCase().startsWith(partial) ||
+            a.displayName.toLowerCase().includes(partial)),
+      );
+      for (const agent of agents) {
+        items.push({
+          type: "agent",
+          label: `@${agent.name}`,
+          description: agent.description || agent.displayName,
+          icon: "🤖",
+          value: `@${agent.name} `,
+        });
+      }
+    }
+
+    setAutocomplete(items);
+    setSelectedIndex(0);
+  }, [input, ctx]);
+
+  const applyAutocomplete = useCallback(
+    (item: AutocompleteItem) => {
+      if (item.type === "command") {
+        setInput(item.value);
+      } else {
+        const newInput = input.replace(/@[\w-]*$/, item.value);
+        setInput(newInput);
+      }
+      setAutocomplete([]);
+      textareaRef.current?.focus();
+    },
+    [input],
+  );
+
   const handleSubmit = useCallback(() => {
     if (!input.trim() || isLoading) return;
     onSend(input);
     setInput("");
+    setAutocomplete([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -34,16 +109,57 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (autocomplete.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSelectedIndex((i) => Math.min(i + 1, autocomplete.length - 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSelectedIndex((i) => Math.max(i - 1, 0));
+          return;
+        }
+        if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+          e.preventDefault();
+          applyAutocomplete(autocomplete[selectedIndex]);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setAutocomplete([]);
+          return;
+        }
+      }
+
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSubmit();
       }
     },
-    [handleSubmit],
+    [handleSubmit, autocomplete, selectedIndex, applyAutocomplete],
   );
 
   return (
     <div className="copilot-chat-input-area">
+      {autocomplete.length > 0 && (
+        <div className="copilot-autocomplete-popup">
+          {autocomplete.map((item, i) => (
+            <div
+              key={`${item.type}-${item.value}`}
+              className={`copilot-autocomplete-item ${i === selectedIndex ? "selected" : ""}`}
+              onClick={() => applyAutocomplete(item)}
+              onMouseEnter={() => setSelectedIndex(i)}
+            >
+              <span className="copilot-autocomplete-icon">{item.icon}</span>
+              <div className="copilot-autocomplete-text">
+                <span className="copilot-autocomplete-label">{item.label}</span>
+                <span className="copilot-autocomplete-desc">{item.description}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="copilot-chat-input-wrapper">
         <textarea
           ref={textareaRef}
@@ -51,7 +167,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isLoading ? "Copilot is thinking..." : "Ask Copilot anything..."}
+          placeholder={
+            isLoading
+              ? "Copilot is thinking..."
+              : "Ask Copilot anything... (/ for commands, @ for agents)"
+          }
           disabled={isLoading}
           rows={1}
         />

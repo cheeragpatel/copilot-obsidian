@@ -1,17 +1,65 @@
 import * as React from "react";
+import { useContext, useState, useEffect } from "react";
+import { PluginContext } from "../views/CopilotChatView";
 
 interface EmptyStateProps {
   onSuggestionClick: (text: string) => void;
 }
 
-const SUGGESTIONS = [
-  "Summarize my recent notes",
-  "Help me brainstorm ideas for a project",
-  "Search my vault for notes about...",
-  "Create a new note outline",
-];
+interface SmartSuggestion {
+  label: string;
+  prompt: string;
+  icon: string;
+}
+
+function useSmartSuggestions(): SmartSuggestion[] {
+  const ctx = useContext(PluginContext);
+  const [suggestions, setSuggestions] = useState<SmartSuggestion[]>([]);
+
+  useEffect(() => {
+    if (!ctx) return;
+    const app = ctx.app;
+
+    const buildSuggestions = () => {
+      const result: SmartSuggestion[] = [];
+      const activeFile = app.workspace.getActiveFile?.();
+
+      if (activeFile) {
+        const name = activeFile.basename;
+        result.push(
+          { label: `Summarize "${name}"`, prompt: `/summarize`, icon: "📝" },
+          { label: `Explain "${name}"`, prompt: `/explain`, icon: "💡" },
+          { label: `Suggest tags for "${name}"`, prompt: `/tags`, icon: "🏷️" },
+          { label: `Find links for "${name}"`, prompt: `/links`, icon: "🔗" },
+        );
+      } else {
+        result.push(
+          { label: "Explore my vault", prompt: `/vault`, icon: "🗄️" },
+          { label: "Help with my daily note", prompt: `/daily`, icon: "📅" },
+          { label: "Create a new note", prompt: `/new`, icon: "✨" },
+          {
+            label: "Search my vault",
+            prompt: "Search my vault for notes about...",
+            icon: "🔍",
+          },
+        );
+      }
+
+      setSuggestions(result);
+    };
+
+    buildSuggestions();
+
+    const ref = app.workspace.on("active-leaf-change", buildSuggestions);
+    return () => app.workspace.offref(ref);
+  }, [ctx]);
+
+  return suggestions;
+}
 
 export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick }) => {
+  const suggestions = useSmartSuggestions();
+
   return (
     <div className="copilot-empty-state">
       <div className="copilot-empty-icon">
@@ -30,16 +78,17 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick }) => 
       </div>
       <h4 className="copilot-empty-title">GitHub Copilot for Obsidian</h4>
       <p className="copilot-empty-subtitle">
-        Ask questions, get help with your notes, or use Agent mode to let Copilot read and edit your vault.
+        Ask questions about your notes, or use /commands and @agents.
       </p>
       <div className="copilot-empty-suggestions">
-        {SUGGESTIONS.map((suggestion) => (
+        {suggestions.map((s) => (
           <button
-            key={suggestion}
+            key={s.label}
             className="copilot-suggestion-btn"
-            onClick={() => onSuggestionClick(suggestion)}
+            onClick={() => onSuggestionClick(s.prompt)}
           >
-            {suggestion}
+            <span className="copilot-suggestion-icon">{s.icon}</span>
+            {s.label}
           </button>
         ))}
       </div>
