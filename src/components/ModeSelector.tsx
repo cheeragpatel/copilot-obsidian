@@ -12,18 +12,14 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
 }) => {
   return (
     <div className="copilot-mode-selector">
-      <button
-        className={`copilot-mode-btn ${currentMode === ChatMode.Ask ? "active" : ""}`}
-        onClick={() => onModeChange(ChatMode.Ask)}
+      <select
+        className="copilot-mode-select"
+        value={currentMode}
+        onChange={(e) => onModeChange(e.target.value as ChatMode)}
       >
-        Ask
-      </button>
-      <button
-        className={`copilot-mode-btn ${currentMode === ChatMode.Agent ? "active" : ""}`}
-        onClick={() => onModeChange(ChatMode.Agent)}
-      >
-        Agent
-      </button>
+        <option value={ChatMode.Ask}>Ask</option>
+        <option value={ChatMode.Agent}>Agent</option>
+      </select>
     </div>
   );
 };

@@ -4,18 +4,18 @@ import { ChatMode } from "../types/constants";
 import { ModeSelector } from "./ModeSelector";
 
 describe("ModeSelector", () => {
-  it("renders Ask and Agent buttons and marks the active mode", () => {
+  it("renders a dropdown with Ask and Agent options", () => {
     render(
       <ModeSelector currentMode={ChatMode.Ask} onModeChange={vi.fn()} />,
     );
 
-    expect(screen.getByRole("button", { name: "Ask" })).toHaveClass("active");
-    expect(screen.getByRole("button", { name: "Agent" })).not.toHaveClass(
-      "active",
-    );
+    const select = screen.getByRole("combobox");
+    expect(select).toHaveValue(ChatMode.Ask);
+    expect(screen.getByRole("option", { name: "Ask" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Agent" })).toBeInTheDocument();
   });
 
-  it("calls onModeChange when the Agent button is clicked", async () => {
+  it("calls onModeChange when switching to Agent", async () => {
     const user = userEvent.setup();
     const onModeChange = vi.fn();
 
@@ -23,12 +23,12 @@ describe("ModeSelector", () => {
       <ModeSelector currentMode={ChatMode.Ask} onModeChange={onModeChange} />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Agent" }));
+    await user.selectOptions(screen.getByRole("combobox"), ChatMode.Agent);
 
     expect(onModeChange).toHaveBeenCalledWith(ChatMode.Agent);
   });
 
-  it("calls onModeChange when the Ask button is clicked", async () => {
+  it("calls onModeChange when switching to Ask", async () => {
     const user = userEvent.setup();
     const onModeChange = vi.fn();
 
@@ -36,7 +36,7 @@ describe("ModeSelector", () => {
       <ModeSelector currentMode={ChatMode.Agent} onModeChange={onModeChange} />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Ask" }));
+    await user.selectOptions(screen.getByRole("combobox"), ChatMode.Ask);
 
     expect(onModeChange).toHaveBeenCalledWith(ChatMode.Ask);
   });

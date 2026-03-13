@@ -69,33 +69,31 @@
   align-items: center;
 }
 
-/* ── Mode Selector (pill toggle) ── */
+/* ── Mode Selector (dropdown) ── */
 .copilot-mode-selector {
   display: inline-flex;
-  background: var(--background-secondary);
-  border-radius: 6px;
-  border: 1px solid var(--background-modifier-border);
-  overflow: hidden;
 }
 
-.copilot-mode-btn {
-  padding: 4px 12px;
-  border: none;
-  background: none;
-  cursor: pointer;
+.copilot-mode-select {
+  padding: 3px 6px;
   font-size: 0.8rem;
-  color: var(--text-muted);
-  transition: all 0.15s ease;
-}
-
-.copilot-mode-btn:hover {
-  color: var(--text-normal);
-}
-
-.copilot-mode-btn.active {
+  font-weight: 500;
   background: var(--interactive-accent);
   color: var(--text-on-accent);
-  font-weight: 500;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 4px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='white'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+
+.copilot-mode-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--interactive-accent-hover, rgba(var(--interactive-accent), 0.3));
 }
 
 /* ── Model Selector ── */

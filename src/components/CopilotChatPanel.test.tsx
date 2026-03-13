@@ -89,14 +89,15 @@ describe("CopilotChatPanel", () => {
     const user = userEvent.setup();
 
     await renderPanel();
-    await user.click(screen.getByRole("button", { name: "Agent" }));
+    // Mode selector is now a dropdown inside ChatInput area
+    const modeSelect = screen.getByRole("option", { name: "Agent" }).closest("select")!;
+    await user.selectOptions(modeSelect, ChatMode.Agent);
 
     await waitFor(() => {
       expect(mockService.switchMode).toHaveBeenCalledWith(ChatMode.Agent, []);
     });
 
     expect(useChatStore.getState().currentMode).toBe(ChatMode.Agent);
-    expect(screen.getByRole("button", { name: "Agent" })).toHaveClass("active");
   });
 
   it("calls abort from the stop button and resets loading state", async () => {
