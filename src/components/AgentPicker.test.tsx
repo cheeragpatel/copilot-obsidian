@@ -15,12 +15,14 @@ function createAgent(name: string, enabled = true): CustomAgentEntry {
 }
 
 describe("AgentPicker", () => {
-  it("renders nothing when there are no enabled agents", () => {
-    const { container } = render(
+  it("renders the dropdown with add agent option when there are no enabled agents", () => {
+    render(
       <AgentPicker agents={[createAgent("writer", false)]} />,
     );
 
-    expect(container.firstChild).toBeNull();
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /No agent/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Add agent/ })).toBeInTheDocument();
   });
 
   it("renders a dropdown with enabled agents", () => {
@@ -31,10 +33,10 @@ describe("AgentPicker", () => {
     );
 
     expect(screen.getByRole("combobox")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "No agent" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "@writer" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /No agent/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /@writer/ })).toBeInTheDocument();
     expect(
-      screen.queryByRole("option", { name: "@reviewer" }),
+      screen.queryByRole("option", { name: /@reviewer/ }),
     ).not.toBeInTheDocument();
   });
 
@@ -56,7 +58,7 @@ describe("AgentPicker", () => {
 
     await user.selectOptions(
       screen.getByRole("combobox"),
-      screen.getByRole("option", { name: "No agent" }),
+      screen.getByRole("option", { name: /No agent/ }),
     );
 
     expect(useChatStore.getState().selectedAgent).toBeNull();

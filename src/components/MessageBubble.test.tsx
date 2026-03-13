@@ -55,12 +55,21 @@ describe("MessageBubble", () => {
     expect(screen.queryByTitle("Copy message")).not.toBeInTheDocument();
   });
 
-  it("shows the streaming cursor when the message is streaming", () => {
+  it("shows the streaming cursor when the message is streaming with content", () => {
+    const { container } = render(
+      <MessageBubble message={createMessage({ content: "Hello", isStreaming: true })} />,
+    );
+
+    expect(container.querySelector(".copilot-streaming-cursor")).toBeInTheDocument();
+  });
+
+  it("shows thinking dots when streaming with no content yet", () => {
     const { container } = render(
       <MessageBubble message={createMessage({ content: "", isStreaming: true })} />,
     );
 
-    expect(container.querySelector(".copilot-streaming-cursor")).toBeInTheDocument();
+    expect(container.querySelector(".copilot-thinking-dots")).toBeInTheDocument();
+    expect(container.querySelector(".copilot-streaming-cursor")).not.toBeInTheDocument();
   });
 
   it("shows tool calls when they are present", () => {

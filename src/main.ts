@@ -5,6 +5,7 @@ import { CopilotSettingsTab } from "./settings/SettingsTab";
 import { COPILOT_CHAT_VIEW_TYPE } from "./types/constants";
 import type { PluginSettings } from "./types/settings";
 import { DEFAULT_SETTINGS } from "./types/settings";
+import { clearSessionPermissions } from "./views/PermissionModal";
 
 export default class CopilotPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
@@ -56,6 +57,9 @@ export default class CopilotPlugin extends Plugin {
   }
 
   async onunload() {
+    // Clear session-scoped permission cache
+    clearSessionPermissions();
+
     // Clean up the copilot service
     if (this.copilotService) {
       try {

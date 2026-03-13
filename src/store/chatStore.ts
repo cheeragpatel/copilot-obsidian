@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
 import type { ChatMessage, ToolCallInfo, ConversationMeta } from "../types/chat";
+import type { CustomAgentEntry } from "../types/settings";
 
 interface ChatState {
   messages: ChatMessage[];
@@ -12,6 +13,7 @@ interface ChatState {
   error: string | null;
   selectedAgent: string | null;
   conversations: ConversationMeta[];
+  discoveredAgents: CustomAgentEntry[];
 }
 
 interface ChatActions {
@@ -30,6 +32,8 @@ interface ChatActions {
   setSessionId: (id: string | null) => void;
   setAgent: (agent: string | null) => void;
   setConversations: (conversations: ConversationMeta[]) => void;
+  setDiscoveredAgents: (agents: CustomAgentEntry[]) => void;
+  addCustomAgent: (agent: CustomAgentEntry) => void;
   newConversation: () => void;
 }
 
@@ -48,6 +52,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   error: null,
   selectedAgent: null,
   conversations: [],
+  discoveredAgents: [],
 
   // Actions
   addMessage: (message) =>
@@ -137,6 +142,15 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   setAgent: (agent) => set({ selectedAgent: agent }),
 
   setConversations: (conversations) => set({ conversations }),
+
+  setDiscoveredAgents: (agents) => set({ discoveredAgents: agents }),
+
+  addCustomAgent: (agent) =>
+    set((state) => {
+      const exists = state.discoveredAgents.some((a) => a.name === agent.name);
+      if (exists) return state;
+      return { discoveredAgents: [...state.discoveredAgents, agent] };
+    }),
 
   newConversation: () =>
     set({

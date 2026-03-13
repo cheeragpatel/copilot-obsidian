@@ -5,11 +5,13 @@ import { useChatStore, generateId } from "../store/chatStore";
 import { ChatMode } from "../types/constants";
 import { createVaultTools } from "../tools/vaultTools";
 import { SlashCommandRegistry } from "../commands/SlashCommandRegistry";
+import { ConfigDiscovery } from "../services/ConfigDiscovery";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { EmptyState } from "./EmptyState";
 import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
+import type { CustomAgentEntry } from "../types/settings";
 
 export const CopilotChatPanel: React.FC = () => {
   const ctx = useContext(PluginContext);
@@ -34,8 +36,11 @@ export const CopilotChatPanel: React.FC = () => {
     clearMessages,
     setMode,
     setAvailableModels,
+    setDiscoveredAgents,
+    addCustomAgent,
     newConversation,
     setAgent,
+    discoveredAgents,
   } = useChatStore();
 
   useEffect(() => {
@@ -54,6 +59,17 @@ export const CopilotChatPanel: React.FC = () => {
           }
         } catch {
           // Non-fatal: fall back to static model list
+        }
+
+        // Discover agents from .copilot/agents/, .github/agents/, ~/.copilot/agents/
+        try {
+          const discovery = new ConfigDiscovery(ctx.app);
+          const config = await discovery.discover();
+          if (config.agents.length > 0) {
+            setDiscoveredAgents(config.agents);
+          }
+        } catch {
+          // Non-fatal: continue without discovered agents
         }
 
         const tools =
@@ -154,9 +170,12 @@ export const CopilotChatPanel: React.FC = () => {
       const agentMatch = actualPrompt.match(/@([\w-]+)\s*/);
       if (agentMatch) {
         const agentName = agentMatch[1];
-        const agent = ctx.settings.customAgents?.find(
-          (a: any) => a.enabled && a.name === agentName,
-        );
+        // Check settings agents and discovered agents
+        const allAgents = [
+          ...(ctx.settings.customAgents || []).filter((a: any) => a.enabled),
+          ...useChatStore.getState().discoveredAgents,
+        ];
+        const agent = allAgents.find((a: any) => a.name === agentName);
         if (agent) {
           setAgent(agentName);
           actualPrompt =
@@ -265,11 +284,21 @@ export const CopilotChatPanel: React.FC = () => {
 
   const canRetry = !isLoading && messages.length > 0 && !!lastUserPrompt.current;
 
+  const handleAddAgent = useCallback(
+    (agent: CustomAgentEntry) => {
+      addCustomAgent(agent);
+      // Also persist to settings if context available
+      if (ctx) {
+        ctx.settings.customAgents = [...(ctx.settings.customAgents || []), agent];
+      }
+    },
+    [ctx, addCustomAgent],
+  );
+
   return (
     <div className="copilot-chat-container">
       <ChatHeader
         onNewConversation={handleNewConversation}
-        onModeSwitch={handleModeSwitch}
       />
       {error && (
         <div className="copilot-error-banner">
@@ -288,6 +317,8 @@ export const CopilotChatPanel: React.FC = () => {
         onSend={handleSend}
         onAbort={handleAbort}
         onRetry={handleRetry}
+        onModeSwitch={handleModeSwitch}
+        onAddAgent={handleAddAgent}
         isLoading={isLoading}
         canRetry={canRetry}
       />

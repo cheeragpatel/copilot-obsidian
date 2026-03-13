@@ -1,13 +1,20 @@
 import * as React from "react";
 import { useState, useCallback, useRef, useEffect, useContext } from "react";
 import { PluginContext } from "../views/CopilotChatView";
+import { useChatStore } from "../store/chatStore";
+import { ChatMode } from "../types/constants";
 import { BUILT_IN_COMMANDS } from "../commands/SlashCommandRegistry";
+import { ModeSelector } from "./ModeSelector";
+import { ModelSelector } from "./ModelSelector";
+import { AgentPicker } from "./AgentPicker";
 import type { CustomAgentEntry } from "../types/settings";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   onAbort: () => void;
   onRetry?: () => void;
+  onModeSwitch: (mode: ChatMode) => void;
+  onAddAgent?: (agent: CustomAgentEntry) => void;
   isLoading: boolean;
   canRetry?: boolean;
 }
@@ -24,6 +31,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
   onAbort,
   onRetry,
+  onModeSwitch,
+  onAddAgent,
   isLoading,
   canRetry,
 }) => {
@@ -32,6 +41,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const ctx = useContext(PluginContext);
+  const { currentMode, discoveredAgents } = useChatStore();
+  const customAgents = ctx?.settings?.customAgents ?? [];
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -64,15 +75,24 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
 
     const atMatch = input.match(/@([\w-]*)$/);
-    if (atMatch && ctx?.settings?.customAgents) {
+    if (atMatch) {
       const partial = atMatch[1].toLowerCase();
-      const agents: CustomAgentEntry[] = ctx.settings.customAgents.filter(
-        (a: CustomAgentEntry) =>
-          a.enabled &&
-          (a.name.toLowerCase().startsWith(partial) ||
-            a.displayName.toLowerCase().includes(partial)),
+      // Merge settings + discovered agents for autocomplete
+      const allAgents: CustomAgentEntry[] = [];
+      const seen = new Set<string>();
+      for (const a of (ctx?.settings?.customAgents || []).filter((a: CustomAgentEntry) => a.enabled)) {
+        if (!seen.has(a.name)) { seen.add(a.name); allAgents.push(a); }
+      }
+      for (const a of discoveredAgents) {
+        if (!seen.has(a.name)) { seen.add(a.name); allAgents.push(a); }
+      }
+
+      const filtered = allAgents.filter(
+        (a) =>
+          a.name.toLowerCase().startsWith(partial) ||
+          a.displayName.toLowerCase().includes(partial),
       );
-      for (const agent of agents) {
+      for (const agent of filtered) {
         items.push({
           type: "agent",
           label: `@${agent.name}`,
@@ -85,7 +105,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
     setAutocomplete(items);
     setSelectedIndex(0);
-  }, [input, ctx]);
+  }, [input, ctx, discoveredAgents]);
 
   const applyAutocomplete = useCallback(
     (item: AutocompleteItem) => {
@@ -202,6 +222,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             </button>
           )}
         </div>
+      </div>
+      <div className="copilot-chat-controls">
+        <ModeSelector currentMode={currentMode} onModeChange={onModeSwitch} />
+        <ModelSelector />
+        <AgentPicker agents={customAgents} onAddAgent={onAddAgent} />
       </div>
     </div>
   );

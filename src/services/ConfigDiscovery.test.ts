@@ -45,6 +45,7 @@ describe("ConfigDiscovery", () => {
       skills: [],
       mcpServers: [],
       instructions: "",
+      agents: [],
     });
   });
 

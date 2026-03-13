@@ -6,7 +6,7 @@ import { renderWithContext } from "./testUtils";
 
 function renderChatInput(overrides: Parameters<typeof renderWithContext>[1] = {}) {
   return renderWithContext(
-    <ChatInput onSend={vi.fn()} onAbort={vi.fn()} isLoading={false} />,
+    <ChatInput onSend={vi.fn()} onAbort={vi.fn()} onModeSwitch={vi.fn()} isLoading={false} />,
     overrides,
   );
 }
@@ -29,7 +29,7 @@ describe("ChatInput", () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
 
-    renderWithContext(<ChatInput onSend={onSend} onAbort={vi.fn()} isLoading={false} />);
+    renderWithContext(<ChatInput onSend={onSend} onAbort={vi.fn()} onModeSwitch={vi.fn()} isLoading={false} />);
 
     const textarea = screen.getByRole("textbox");
     await user.type(textarea, "Hello Copilot{enter}");
@@ -42,7 +42,7 @@ describe("ChatInput", () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
 
-    renderWithContext(<ChatInput onSend={onSend} onAbort={vi.fn()} isLoading={false} />);
+    renderWithContext(<ChatInput onSend={onSend} onAbort={vi.fn()} onModeSwitch={vi.fn()} isLoading={false} />);
 
     const textarea = screen.getByRole("textbox");
     await user.type(textarea, "Hello");
@@ -52,14 +52,13 @@ describe("ChatInput", () => {
     expect(textarea).toHaveValue("Hello\nworld");
   });
 
-  it("shows a Stop button and disables the textarea while loading", async () => {
+  it("shows a Stop button while loading", async () => {
     const user = userEvent.setup();
     const onAbort = vi.fn();
 
-    renderWithContext(<ChatInput onSend={vi.fn()} onAbort={onAbort} isLoading />);
+    renderWithContext(<ChatInput onSend={vi.fn()} onAbort={onAbort} onModeSwitch={vi.fn()} isLoading />);
 
-    expect(screen.getByRole("textbox")).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Stop" }));
+    await user.click(screen.getByRole("button", { name: /Stop/ }));
 
     expect(onAbort).toHaveBeenCalledTimes(1);
   });

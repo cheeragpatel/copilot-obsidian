@@ -113,7 +113,7 @@ describe("CopilotChatPanel", () => {
     useChatStore.setState({ isLoading: true, messages });
 
     await renderPanel();
-    await user.click(screen.getByRole("button", { name: "Stop" }));
+    await user.click(screen.getByRole("button", { name: /Stop/ }));
 
     await waitFor(() => {
       expect(mockService.abort).toHaveBeenCalledTimes(1);
