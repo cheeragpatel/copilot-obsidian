@@ -1,6 +1,6 @@
 {
-  "id": "copilot-obsidian",
-  "name": "Copilot for Obsidian",
+  "id": "github-copilot-for-obsidian",
+  "name": "GitHub Copilot for Obsidian",
   "version": "0.1.0",
   "minAppVersion": "1.5.12",
   "description": "GitHub Copilot integration for Obsidian — chat, agent mode, skills, custom agents, and MCP support via the official Copilot SDK",

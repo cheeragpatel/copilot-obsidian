@@ -6,7 +6,7 @@ describe("EmptyState", () => {
   it("renders the title, subtitle, and suggestion buttons", () => {
     render(<EmptyState onSuggestionClick={vi.fn()} />);
 
-    expect(screen.getByText("Copilot for Obsidian")).toBeInTheDocument();
+    expect(screen.getByText("GitHub Copilot for Obsidian")).toBeInTheDocument();
     expect(
       screen.getByText(
         /Ask questions, get help with your notes, or use Agent mode/i,

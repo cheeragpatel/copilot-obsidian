@@ -25,7 +25,7 @@ vi.mock("./settings/SettingsTab", () => ({
 }));
 
 const mockManifest = {
-  id: "copilot-obsidian",
+  id: "github-copilot-for-obsidian",
   name: "Copilot Obsidian",
 } as any;
 

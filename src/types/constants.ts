@@ -1,4 +1,4 @@
-export const PLUGIN_ID = "copilot-obsidian";
+export const PLUGIN_ID = "github-copilot-for-obsidian";
 export const COPILOT_CHAT_VIEW_TYPE = "copilot-chat-view";
 
 export enum ChatMode {

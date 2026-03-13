@@ -22,7 +22,7 @@ describe("CopilotChatPanel", () => {
   it("renders in the initial state with the empty state", async () => {
     await renderPanel();
 
-    expect(screen.getByText("Copilot for Obsidian")).toBeInTheDocument();
+    expect(screen.getByText("GitHub Copilot for Obsidian")).toBeInTheDocument();
     expect(mockService.createSession).toHaveBeenCalledWith(
       expect.objectContaining({ model: "gpt-4.1", mode: "ask" }),
     );
@@ -43,7 +43,7 @@ describe("CopilotChatPanel", () => {
     await renderPanel();
 
     expect(screen.getByText("Existing message")).toBeInTheDocument();
-    expect(screen.queryByText("Copilot for Obsidian")).not.toBeInTheDocument();
+    expect(screen.queryByText("GitHub Copilot for Obsidian")).not.toBeInTheDocument();
   });
 
   it("shows an error banner and clears it when dismissed", async () => {

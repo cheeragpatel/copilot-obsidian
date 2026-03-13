@@ -28,7 +28,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick }) => 
           <path d="M12 8h.01" />
         </svg>
       </div>
-      <h4 className="copilot-empty-title">Copilot for Obsidian</h4>
+      <h4 className="copilot-empty-title">GitHub Copilot for Obsidian</h4>
       <p className="copilot-empty-subtitle">
         Ask questions, get help with your notes, or use Agent mode to let Copilot read and edit your vault.
       </p>
