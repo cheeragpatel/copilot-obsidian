@@ -6,30 +6,48 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "version": "node version-bump.mjs && git add manifest.json versions.json"
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
-  "keywords": ["obsidian", "copilot", "github", "ai", "chat"],
+  "keywords": [
+    "obsidian",
+    "copilot",
+    "github",
+    "ai",
+    "chat"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^18.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^20.19.37",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@vitest/coverage-v8": "^4.1.0",
     "builtin-modules": "3.3.0",
     "esbuild": "0.17.3",
+    "jsdom": "^28.1.0",
     "obsidian": "latest",
     "tslib": "2.4.0",
-    "typescript": "5.4.5"
+    "typescript": "5.4.5",
+    "vitest": "^4.1.0"
   },
   "dependencies": {
     "@github/copilot-sdk": "latest",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^15.6.1",
-    "@types/react-syntax-highlighter": "^15.5.13",
     "remark-gfm": "^4.0.1",
     "zod": "^3.23.0",
     "zustand": "^5.0.3"
+  },
+  "overrides": {
+    "tinyexec": "1.0.2"
   }
 }
