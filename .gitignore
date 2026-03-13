@@ -1,0 +1,21 @@
+# Build output
+main.js
+
+# Dependencies
+node_modules
+
+# Obsidian plugin data
+data.json
+
+# Source maps
+*.map
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
