@@ -10,8 +10,8 @@ export const ToolExecutionIndicator: React.FC<ToolExecutionIndicatorProps> = ({
 }) => {
   return (
     <div className="copilot-tool-calls">
-      {toolCalls.map((tc, i) => (
-        <div key={`${tc.name}-${i}`} className={`copilot-tool-call ${tc.status}`}>
+      {toolCalls.map((tc) => (
+        <div key={tc.id} className={`copilot-tool-call ${tc.status}`}>
           {tc.status === "running" && <div className="copilot-tool-spinner" />}
           {tc.status === "complete" && <span>✓</span>}
           {tc.status === "error" && <span>✗</span>}

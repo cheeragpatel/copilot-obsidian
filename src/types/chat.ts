@@ -10,6 +10,7 @@ export interface ChatMessage {
 }
 
 export interface ToolCallInfo {
+  id: string;
   name: string;
   status: "running" | "complete" | "error";
   result?: string;

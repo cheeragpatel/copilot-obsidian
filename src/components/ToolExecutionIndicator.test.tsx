@@ -8,7 +8,7 @@ function renderIndicator(toolCalls: ToolCallInfo[]) {
 
 describe("ToolExecutionIndicator", () => {
   it("renders a running tool with the spinner class", () => {
-    const { container } = renderIndicator([{ name: "searchVault", status: "running" }]);
+    const { container } = renderIndicator([{ id: "t1", name: "searchVault", status: "running" }]);
 
     expect(
       container.querySelector(".copilot-tool-call.running .copilot-tool-spinner"),
@@ -16,22 +16,22 @@ describe("ToolExecutionIndicator", () => {
   });
 
   it("renders a complete tool with a checkmark", () => {
-    renderIndicator([{ name: "openNote", status: "complete" }]);
+    renderIndicator([{ id: "t2", name: "openNote", status: "complete" }]);
 
     expect(screen.getByText("✓")).toBeInTheDocument();
   });
 
   it("renders an error tool with an X mark", () => {
-    renderIndicator([{ name: "writeNote", status: "error" }]);
+    renderIndicator([{ id: "t3", name: "writeNote", status: "error" }]);
 
     expect(screen.getByText("✗")).toBeInTheDocument();
   });
 
   it("renders multiple tool calls", () => {
     const { container } = renderIndicator([
-      { name: "searchVault", status: "running" },
-      { name: "openNote", status: "complete" },
-      { name: "writeNote", status: "error" },
+      { id: "t4", name: "searchVault", status: "running" },
+      { id: "t5", name: "openNote", status: "complete" },
+      { id: "t6", name: "writeNote", status: "error" },
     ]);
 
     expect(container.querySelectorAll(".copilot-tool-call")).toHaveLength(3);

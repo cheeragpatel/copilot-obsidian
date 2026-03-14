@@ -25,6 +25,7 @@ const createMessage = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
 });
 
 const createToolCall = (overrides: Partial<ToolCallInfo> = {}): ToolCallInfo => ({
+  id: `tc-${++messageCounter}`,
   name: `tool-${messageCounter}`,
   status: "running",
   ...overrides,

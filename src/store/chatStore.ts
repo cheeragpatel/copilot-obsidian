@@ -116,11 +116,18 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       const messages = [...state.messages];
       for (let i = messages.length - 1; i >= 0; i--) {
         if (messages[i].role === "assistant" && messages[i].toolCalls) {
-          const toolCalls = messages[i].toolCalls!.map((tc) =>
-            tc.name === name ? { ...tc, status, result } : tc,
-          );
-          messages[i] = { ...messages[i], toolCalls };
-          break;
+          let updated = false;
+          const toolCalls = messages[i].toolCalls!.map((tc) => {
+            if (!updated && tc.name === name && tc.status === "running") {
+              updated = true;
+              return { ...tc, status, result };
+            }
+            return tc;
+          });
+          if (updated) {
+            messages[i] = { ...messages[i], toolCalls };
+            return { messages };
+          }
         }
       }
       return { messages };
@@ -129,6 +136,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   completeAllToolCalls: () =>
     set((state) => {
       const messages = [...state.messages];
+      let changed = false;
       for (let i = messages.length - 1; i >= 0; i--) {
         if (messages[i].role === "assistant" && messages[i].toolCalls) {
           const hasRunning = messages[i].toolCalls!.some((tc) => tc.status === "running");
@@ -137,11 +145,11 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
               tc.status === "running" ? { ...tc, status: "complete" as const } : tc,
             );
             messages[i] = { ...messages[i], toolCalls };
+            changed = true;
           }
-          break;
         }
       }
-      return { messages };
+      return changed ? { messages } : state;
     }),
 
   clearMessages: () => set({ messages: [], error: null }),

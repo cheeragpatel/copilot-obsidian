@@ -78,8 +78,8 @@ describe("MessageBubble", () => {
         message={
           createMessage({
             toolCalls: [
-              { name: "searchVault", status: "running" },
-              { name: "openNote", status: "complete" },
+              { id: "tc1", name: "searchVault", status: "running" },
+              { id: "tc2", name: "openNote", status: "complete" },
             ],
           })
         }

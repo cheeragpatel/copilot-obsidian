@@ -108,6 +108,7 @@ export const CopilotChatPanel: React.FC = () => {
         case "tool.execution_start":
         case "tool.executionStart":
           addToolCall({
+            id: generateId(),
             name: event.data?.name || event.data?.toolName || "tool",
             status: "running",
           });
