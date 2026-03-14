@@ -313,6 +313,7 @@ export class CopilotSettingsTab extends PluginSettingTab {
           type: "http",
           url: "https://",
           enabled: true,
+          source: "settings",
         });
         this.expandedMcpServers.add(this.settings.mcpServers.length - 1);
         await this.plugin.saveSettings();

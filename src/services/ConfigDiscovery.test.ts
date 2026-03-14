@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as os from "os";
+import * as path from "path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigDiscovery } from "./ConfigDiscovery";
 
 function createMockApp() {
@@ -33,9 +35,31 @@ function createMockApp() {
 describe("ConfigDiscovery", () => {
   let mockApp: ReturnType<typeof createMockApp>;
 
+  const mockHomeFiles = (files: Record<string, string>) => {
+    const fs = {
+      existsSync: vi.fn((candidate: string) => Object.prototype.hasOwnProperty.call(files, candidate)),
+      readFileSync: vi.fn((candidate: string) => files[candidate]),
+      readdirSync: vi.fn(() => []),
+      statSync: vi.fn(() => ({ isDirectory: () => false })),
+    };
+
+    (window as Window & { require?: (name: string) => unknown }).require = vi.fn((name: string) => {
+      if (name === "fs") return fs;
+      if (name === "path") return path;
+      throw new Error(`Unexpected module: ${name}`);
+    });
+
+    return fs;
+  };
+
   beforeEach(() => {
     mockApp = createMockApp();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    delete (window as Window & { require?: (name: string) => unknown }).require;
+    vi.restoreAllMocks();
   });
 
   it("returns empty config when no standard config paths exist", async () => {
@@ -96,6 +120,7 @@ describe("ConfigDiscovery", () => {
         args: undefined,
         env: undefined,
         enabled: true,
+        source: "vault",
       },
       {
         name: "local",
@@ -105,6 +130,7 @@ describe("ConfigDiscovery", () => {
         args: ["server.js"],
         env: { TOKEN: "secret" },
         enabled: true,
+        source: "vault",
       },
     ]);
   });
@@ -133,10 +159,137 @@ describe("ConfigDiscovery", () => {
         args: undefined,
         env: undefined,
         enabled: true,
+        source: "vault",
       },
     ]);
     expect(warnSpy).toHaveBeenCalledWith(
       "[Copilot] Failed to parse .github/copilot/mcp.json:",
+      expect.any(SyntaxError),
+    );
+  });
+
+  it("discovers home MCP servers after vault configs and preserves vault priority", async () => {
+    mockApp._addFile(
+      ".copilot/mcp.json",
+      JSON.stringify({
+        servers: {
+          shared: { type: "http", url: "https://vault.example.com" },
+          vaultOnly: { type: "http", url: "https://vault-only.example.com" },
+        },
+      }),
+    );
+
+    const homeRoot = os.homedir() || "/Users/tester";
+    mockHomeFiles({
+      [path.join(homeRoot, ".copilot", "mcp.json")]: JSON.stringify({
+        servers: {
+          shared: { type: "http", url: "https://home-should-not-win.example.com" },
+          homeStandard: { type: "http", url: "https://home-standard.example.com" },
+        },
+      }),
+      [path.join(homeRoot, ".copilot", "config.json")]: JSON.stringify({
+        mcpServers: {
+          homeConfig: { type: "stdio", command: "node", args: ["config.js"] },
+        },
+      }),
+      [path.join(homeRoot, "Library", "Application Support", "github-copilot", "mcp.json")]: JSON.stringify({
+        servers: {
+          macHome: { type: "http", url: "https://mac.example.com" },
+        },
+      }),
+      [path.join(homeRoot, ".config", "github-copilot", "mcp.json")]: JSON.stringify({
+        mcpServers: {},
+      }),
+    });
+
+    const discovery = new ConfigDiscovery(mockApp as any);
+    const config = await discovery.discover();
+
+    expect(config.mcpServers).toEqual([
+      {
+        name: "shared",
+        type: "http",
+        url: "https://vault.example.com",
+        command: undefined,
+        args: undefined,
+        env: undefined,
+        enabled: true,
+        source: "vault",
+      },
+      {
+        name: "vaultOnly",
+        type: "http",
+        url: "https://vault-only.example.com",
+        command: undefined,
+        args: undefined,
+        env: undefined,
+        enabled: true,
+        source: "vault",
+      },
+      {
+        name: "homeStandard",
+        type: "http",
+        url: "https://home-standard.example.com",
+        command: undefined,
+        args: undefined,
+        env: undefined,
+        enabled: true,
+        source: "home",
+      },
+      {
+        name: "homeConfig",
+        type: "stdio",
+        url: undefined,
+        command: "node",
+        args: ["config.js"],
+        env: undefined,
+        enabled: true,
+        source: "home",
+      },
+      {
+        name: "macHome",
+        type: "http",
+        url: "https://mac.example.com",
+        command: undefined,
+        args: undefined,
+        env: undefined,
+        enabled: true,
+        source: "home",
+      },
+    ]);
+  });
+
+  it("warns and skips invalid home MCP config files", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const homeRoot = os.homedir() || "/Users/tester";
+    const invalidPath = path.join(homeRoot, ".copilot", "mcp.json");
+
+    mockHomeFiles({
+      [invalidPath]: "{invalid json",
+      [path.join(homeRoot, ".copilot", "config.json")]: JSON.stringify({
+        mcpServers: {
+          recovered: { type: "http", url: "https://recovered.example.com" },
+        },
+      }),
+    });
+
+    const discovery = new ConfigDiscovery(mockApp as any);
+    const config = await discovery.discover();
+
+    expect(config.mcpServers).toEqual([
+      {
+        name: "recovered",
+        type: "http",
+        url: "https://recovered.example.com",
+        command: undefined,
+        args: undefined,
+        env: undefined,
+        enabled: true,
+        source: "home",
+      },
+    ]);
+    expect(warnSpy).toHaveBeenCalledWith(
+      `[Copilot] Failed to parse ${invalidPath}:`,
       expect.any(SyntaxError),
     );
   });

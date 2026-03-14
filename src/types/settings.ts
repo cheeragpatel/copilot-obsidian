@@ -8,6 +8,7 @@ export interface MCPServerEntry {
   args?: string[];
   env?: Record<string, string>;
   enabled: boolean;
+  source?: "settings" | "vault" | "home";
 }
 
 export interface CustomAgentEntry {

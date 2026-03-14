@@ -1,3 +1,5 @@
+import type { MCPServerEntry } from "./settings";
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -28,4 +30,17 @@ export interface ConversationMeta {
   model: string;
   messageCount: number;
   lastUpdated: number;
+}
+
+export interface MCPToolInfo {
+  name: string;
+  description?: string;
+  enabled: boolean;
+}
+
+export interface MCPServerState {
+  server: MCPServerEntry;
+  enabled: boolean;
+  tools: MCPToolInfo[];
+  source: "settings" | "vault" | "home";
 }

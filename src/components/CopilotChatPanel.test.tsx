@@ -7,16 +7,56 @@ vi.mock("../tools/vaultTools", () => ({
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useChatStore } from "../store/chatStore";
-import type { ChatMessage, ConversationMeta } from "../types/chat";
+import type { ChatMessage, ConversationMeta, MCPServerState } from "../types/chat";
 import { ChatMode } from "../types/constants";
+import { ConfigDiscovery } from "../services/ConfigDiscovery";
 import { CopilotChatPanel } from "./CopilotChatPanel";
 import { mockService, renderWithContext } from "./testUtils";
+
+const emptyDiscovery = {
+  skills: [],
+  mcpServers: [],
+  instructions: "",
+  agents: [],
+};
 
 async function renderPanel(overrides?: Parameters<typeof renderWithContext>[1]) {
   const view = renderWithContext(<CopilotChatPanel />, overrides);
   await waitFor(() => expect(mockService.initialize).toHaveBeenCalled());
+  await waitFor(() => expect(mockService.createSession).toHaveBeenCalled());
   return view;
 }
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.spyOn(ConfigDiscovery.prototype, "discover").mockResolvedValue(emptyDiscovery);
+  mockService.initialize.mockResolvedValue(undefined);
+  mockService.createSession.mockResolvedValue(undefined);
+  mockService.sendMessage.mockResolvedValue(undefined);
+  mockService.abort.mockResolvedValue(undefined);
+  mockService.onEvent.mockReturnValue(vi.fn());
+  mockService.resumeSession.mockResolvedValue(undefined);
+  mockService.listSessions.mockResolvedValue([]);
+  mockService.getSessionId.mockReturnValue("test-session");
+
+  useChatStore.setState({
+    messages: [],
+    currentMode: ChatMode.Ask,
+    currentModel: "gpt-4.1",
+    availableModels: [],
+    isLoading: false,
+    currentSessionId: null,
+    error: null,
+    selectedAgent: null,
+    conversations: [],
+    discoveredAgents: [],
+    mcpServers: [],
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("CopilotChatPanel", () => {
   it("renders in the initial state with the empty state", async () => {
@@ -24,7 +64,7 @@ describe("CopilotChatPanel", () => {
 
     expect(screen.getByText("GitHub Copilot for Obsidian")).toBeInTheDocument();
     expect(mockService.createSession).toHaveBeenCalledWith(
-      expect.objectContaining({ model: "gpt-4.1", mode: "ask" }),
+      expect.objectContaining({ model: "gpt-4.1", mode: "ask", mcpServers: {} }),
     );
   });
 
@@ -120,6 +160,166 @@ describe("CopilotChatPanel", () => {
     });
   });
 
+  it("merges settings and discovered MCP servers with source priority", async () => {
+    vi.spyOn(ConfigDiscovery.prototype, "discover").mockResolvedValue({
+      skills: [],
+      instructions: "",
+      agents: [],
+      mcpServers: [
+        {
+          name: "shared",
+          type: "http",
+          url: "https://vault.example.com",
+          enabled: true,
+          source: "vault",
+        },
+        {
+          name: "vault-only",
+          type: "http",
+          url: "https://vault-only.example.com",
+          enabled: true,
+          source: "vault",
+        },
+        {
+          name: "home-only",
+          type: "http",
+          url: "https://home-only.example.com",
+          enabled: true,
+          source: "home",
+        },
+      ],
+    });
+
+    await renderPanel({
+      settings: {
+        mcpServers: [
+          {
+            name: "shared",
+            type: "http",
+            url: "https://settings.example.com",
+            enabled: true,
+          },
+          {
+            name: "settings-only",
+            type: "stdio",
+            command: "node",
+            args: ["settings.js"],
+            enabled: true,
+          },
+        ],
+      },
+    });
+
+    expect(useChatStore.getState().mcpServers.map((server) => ({
+      name: server.server.name,
+      source: server.source,
+      serverSource: server.server.source,
+    }))).toEqual([
+      { name: "shared", source: "settings", serverSource: "settings" },
+      { name: "settings-only", source: "settings", serverSource: "settings" },
+      { name: "vault-only", source: "vault", serverSource: "vault" },
+      { name: "home-only", source: "home", serverSource: "home" },
+    ]);
+
+    expect(mockService.createSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        mcpServers: {
+          shared: {
+            type: "http",
+            url: "https://settings.example.com",
+          },
+          "settings-only": {
+            type: "stdio",
+            command: "node",
+            args: ["settings.js"],
+            env: {},
+          },
+          "vault-only": {
+            type: "http",
+            url: "https://vault-only.example.com",
+          },
+          "home-only": {
+            type: "http",
+            url: "https://home-only.example.com",
+          },
+        },
+      }),
+    );
+  });
+
+  it("recreates the session when MCP servers or tools change", async () => {
+    const user = userEvent.setup();
+    const docsServer: MCPServerState = {
+      server: {
+        name: "docs",
+        type: "http",
+        url: "https://docs.example.com",
+        enabled: true,
+        source: "settings",
+      },
+      enabled: true,
+      source: "settings",
+      tools: [
+        { name: "search", enabled: true },
+        { name: "fetch", enabled: false },
+      ],
+    };
+    useChatStore.setState({ mcpServers: [docsServer] });
+
+    await renderPanel({
+      settings: {
+        mcpServers: [
+          {
+            name: "docs",
+            type: "http",
+            url: "https://docs.example.com",
+            enabled: true,
+          },
+        ],
+      },
+    });
+
+    expect(mockService.createSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        mcpServers: {
+          docs: {
+            type: "http",
+            url: "https://docs.example.com",
+            excludedTools: ["fetch"],
+          },
+        },
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Configure MCP servers" }));
+    await user.click(screen.getByRole("button", { name: "Expand docs tools" }));
+    await user.click(screen.getByRole("checkbox", { name: /search/i }));
+
+    await waitFor(() => {
+      expect(mockService.createSession).toHaveBeenCalledTimes(2);
+    });
+    expect(mockService.createSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        mcpServers: {
+          docs: {
+            type: "http",
+            url: "https://docs.example.com",
+            excludedTools: ["search", "fetch"],
+          },
+        },
+      }),
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: /^docs$/i }));
+
+    await waitFor(() => {
+      expect(mockService.createSession).toHaveBeenCalledTimes(3);
+    });
+    expect(mockService.createSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mcpServers: {} }),
+    );
+  });
+
   it("switches modes, preserves messages, and appends a system notice", async () => {
     const user = userEvent.setup();
     useChatStore.setState({
@@ -139,8 +339,16 @@ describe("CopilotChatPanel", () => {
     await user.selectOptions(modeSelect, ChatMode.Agent);
 
     await waitFor(() => {
-      expect(mockService.switchMode).toHaveBeenCalledWith(ChatMode.Agent, []);
+      expect(mockService.createSession).toHaveBeenCalledTimes(2);
     });
+    expect(mockService.createSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        model: "gpt-4.1",
+        mode: ChatMode.Agent,
+        tools: [],
+        mcpServers: {},
+      }),
+    );
 
     expect(useChatStore.getState().currentMode).toBe(ChatMode.Agent);
     expect(useChatStore.getState().messages).toEqual(

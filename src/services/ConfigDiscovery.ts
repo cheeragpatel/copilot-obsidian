@@ -1,3 +1,4 @@
+import * as os from "os";
 import type { App, TFile, TFolder } from "obsidian";
 import type { MCPServerEntry, CustomAgentEntry } from "../types/settings";
 
@@ -14,6 +15,16 @@ function isVaultFile(entry: unknown): entry is TFile {
 
 function isVaultFolder(entry: unknown): entry is TFolder {
   return !!entry && typeof entry === "object" && "children" in entry;
+}
+
+type MCPServerSource = NonNullable<MCPServerEntry["source"]>;
+
+function asServerRecord(value: unknown): Record<string, Partial<MCPServerEntry>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, Partial<MCPServerEntry>>;
 }
 
 /**
@@ -41,12 +52,16 @@ export class ConfigDiscovery {
   }
 
   /**
-   * Discover all Copilot config from standard locations in the vault.
+   * Discover all Copilot config from standard locations in the vault and user home directory.
    * Looks in:
    *   .github/skills/              — repo skills
    *   .copilot/skills/             — personal skills
    *   .github/copilot/mcp.json     — repo MCP servers
    *   .copilot/mcp.json            — personal MCP servers
+   *   ~/.copilot/mcp.json          — global Copilot MCP servers
+   *   ~/.copilot/config.json       — global Copilot config with mcpServers
+   *   ~/Library/Application Support/github-copilot/mcp.json — macOS global MCP servers
+   *   ~/.config/github-copilot/mcp.json — Linux global MCP servers
    *   .github/copilot-instructions.md — repo instructions
    *   .copilot/instructions/       — personal instruction files (*.md)
    *   .copilot/agents/             — personal agents (*.agent.md)
@@ -80,9 +95,10 @@ export class ConfigDiscovery {
 
   private async discoverMCPServers(): Promise<MCPServerEntry[]> {
     const servers: MCPServerEntry[] = [];
-    const candidates = [".github/copilot/mcp.json", ".copilot/mcp.json"];
+    const seen = new Set<string>();
+    const vaultCandidates = [".github/copilot/mcp.json", ".copilot/mcp.json"];
 
-    for (const candidate of candidates) {
+    for (const candidate of vaultCandidates) {
       const file = this.app.vault.getAbstractFileByPath(candidate);
       if (!isVaultFile(file)) {
         continue;
@@ -90,29 +106,80 @@ export class ConfigDiscovery {
 
       try {
         const content = await this.app.vault.read(file);
-        const parsed = JSON.parse(content) as {
-          servers?: Record<string, Partial<MCPServerEntry>>;
-          mcpServers?: Record<string, Partial<MCPServerEntry>>;
-        };
-        const serverEntries = parsed.servers || parsed.mcpServers || {};
-
-        for (const [name, config] of Object.entries(serverEntries)) {
-          servers.push({
-            name,
-            type: config.type === "stdio" ? "stdio" : "http",
-            url: config.url,
-            command: config.command,
-            args: config.args,
-            env: config.env,
-            enabled: true,
-          });
-        }
+        this.appendMCPServers(servers, seen, JSON.parse(content), "vault");
       } catch (error) {
         console.warn(`[Copilot] Failed to parse ${candidate}:`, error);
       }
     }
 
+    try {
+      const fs = window.require("fs");
+      const path = window.require("path");
+      const home = os.homedir() || process.env.HOME || process.env.USERPROFILE || "";
+
+      if (!home) {
+        return servers;
+      }
+
+      const homeCandidates = [
+        path.join(home, ".copilot", "mcp.json"),
+        path.join(home, ".copilot", "config.json"),
+        path.join(home, "Library", "Application Support", "github-copilot", "mcp.json"),
+        path.join(home, ".config", "github-copilot", "mcp.json"),
+      ];
+
+      for (const candidate of homeCandidates) {
+        if (!fs.existsSync(candidate)) {
+          continue;
+        }
+
+        try {
+          const content = fs.readFileSync(candidate, "utf-8");
+          this.appendMCPServers(servers, seen, JSON.parse(content), "home");
+        } catch (error) {
+          console.warn(`[Copilot] Failed to parse ${candidate}:`, error);
+        }
+      }
+    } catch {
+      // fs not available (non-Electron) — skip filesystem discovery
+    }
+
     return servers;
+  }
+
+  private appendMCPServers(
+    servers: MCPServerEntry[],
+    seen: Set<string>,
+    parsed: unknown,
+    source: MCPServerSource,
+  ): void {
+    const config = parsed && typeof parsed === "object"
+      ? parsed as { servers?: unknown; mcpServers?: unknown }
+      : {};
+
+    for (const serverEntries of [asServerRecord(config.servers), asServerRecord(config.mcpServers)]) {
+      for (const [name, rawConfig] of Object.entries(serverEntries)) {
+        if (seen.has(name)) {
+          continue;
+        }
+
+        seen.add(name);
+        const entry = rawConfig && typeof rawConfig === "object" && !Array.isArray(rawConfig)
+          ? rawConfig as Partial<MCPServerEntry>
+          : {};
+
+        servers.push({
+          name,
+          type: entry.type === "stdio" ? "stdio" : "http",
+          url: entry.url,
+          command: entry.command,
+          args: entry.args,
+          env: entry.env,
+          enabled: true,
+          source,
+        });
+      }
+    }
   }
 
   private async discoverInstructions(): Promise<string> {

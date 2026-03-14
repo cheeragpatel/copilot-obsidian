@@ -523,6 +523,7 @@ describe("CopilotSettingsTab", () => {
         type: "http",
         url: "https://",
         enabled: true,
+        source: "settings",
       },
     ]);
     expect(plugin.saveSettings).toHaveBeenCalledTimes(1);

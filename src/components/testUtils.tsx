@@ -42,6 +42,8 @@ export function createPluginContext(
       vault: {
         getMarkdownFiles: vi.fn().mockReturnValue([]),
         getAllLoadedFiles: vi.fn().mockReturnValue([]),
+        getAbstractFileByPath: vi.fn().mockReturnValue(null),
+        read: vi.fn().mockResolvedValue(""),
         cachedRead: vi.fn().mockResolvedValue(""),
         ...(overrides.app?.vault ?? {}),
       },
@@ -51,6 +53,8 @@ export function createPluginContext(
       defaultModel: "gpt-4.1",
       defaultMode: "ask",
       customAgents: [],
+      mcpServers: [],
+      inheritConfig: true,
       streaming: true,
       ...(overrides.settings ?? {}),
     },

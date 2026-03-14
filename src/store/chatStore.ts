@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
-import type { ChatMessage, ToolCallInfo, ConversationMeta } from "../types/chat";
+import type { ChatMessage, ToolCallInfo, ConversationMeta, MCPServerState } from "../types/chat";
 import type { CustomAgentEntry } from "../types/settings";
 
 interface ChatState {
@@ -14,6 +14,7 @@ interface ChatState {
   selectedAgent: string | null;
   conversations: ConversationMeta[];
   discoveredAgents: CustomAgentEntry[];
+  mcpServers: MCPServerState[];
 }
 
 interface ChatActions {
@@ -34,6 +35,10 @@ interface ChatActions {
   setAgent: (agent: string | null) => void;
   setConversations: (conversations: ConversationMeta[]) => void;
   setDiscoveredAgents: (agents: CustomAgentEntry[]) => void;
+  setMCPServers: (servers: MCPServerState[]) => void;
+  toggleMCP: (name: string) => void;
+  toggleMCPTool: (serverName: string, toolName: string) => void;
+  getEnabledMCPConfig: () => Record<string, any>;
   addCustomAgent: (agent: CustomAgentEntry) => void;
   newConversation: () => void;
 }
@@ -54,6 +59,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   selectedAgent: null,
   conversations: [],
   discoveredAgents: [],
+  mcpServers: [],
 
   // Actions
   addMessage: (message) =>
@@ -171,6 +177,65 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   setConversations: (conversations) => set({ conversations }),
 
   setDiscoveredAgents: (agents) => set({ discoveredAgents: agents }),
+
+  setMCPServers: (servers) => set({ mcpServers: servers }),
+
+  toggleMCP: (name) =>
+    set((state) => ({
+      mcpServers: state.mcpServers.map((serverState) =>
+        serverState.server.name === name
+          ? {
+              ...serverState,
+              enabled: !serverState.enabled,
+              server: { ...serverState.server, enabled: !serverState.enabled },
+            }
+          : serverState,
+      ),
+    })),
+
+  toggleMCPTool: (serverName, toolName) =>
+    set((state) => ({
+      mcpServers: state.mcpServers.map((serverState) =>
+        serverState.server.name === serverName
+          ? {
+              ...serverState,
+              tools: serverState.tools.map((tool) =>
+                tool.name === toolName ? { ...tool, enabled: !tool.enabled } : tool,
+              ),
+            }
+          : serverState,
+      ),
+    })),
+
+  getEnabledMCPConfig: () => {
+    const config: Record<string, any> = {};
+
+    for (const serverState of get().mcpServers) {
+      if (!serverState.enabled) continue;
+
+      const { server, tools } = serverState;
+      const disabledTools = tools.filter((tool) => !tool.enabled).map((tool) => tool.name);
+      const excludedTools = disabledTools.length > 0 ? { excludedTools: disabledTools } : {};
+
+      if (server.type === "http" && server.url) {
+        config[server.name] = {
+          type: "http",
+          url: server.url,
+          ...excludedTools,
+        };
+      } else if (server.type === "stdio" && server.command) {
+        config[server.name] = {
+          type: "stdio",
+          command: server.command,
+          args: server.args || [],
+          env: server.env || {},
+          ...excludedTools,
+        };
+      }
+    }
+
+    return config;
+  },
 
   addCustomAgent: (agent) =>
     set((state) => {

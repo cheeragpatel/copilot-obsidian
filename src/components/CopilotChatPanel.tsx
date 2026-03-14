@@ -12,8 +12,8 @@ import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { EmptyState } from "./EmptyState";
 import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
-import type { ConversationMeta, FileAttachment } from "../types/chat";
-import type { CustomAgentEntry } from "../types/settings";
+import type { ConversationMeta, FileAttachment, MCPServerState } from "../types/chat";
+import type { CustomAgentEntry, MCPServerEntry } from "../types/settings";
 
 /** Map raw SDK/CLI errors to user-friendly messages */
 function friendlyError(message: string): string {
@@ -52,6 +52,71 @@ function toConversationMeta(session: any, fallbackModel: string): ConversationMe
   };
 }
 
+function buildEnabledMCPConfig(servers: MCPServerState[]): Record<string, any> {
+  const config: Record<string, any> = {};
+
+  for (const serverState of servers) {
+    if (!serverState.enabled) continue;
+
+    const disabledTools = serverState.tools.filter((tool) => !tool.enabled).map((tool) => tool.name);
+    const excludedTools = disabledTools.length > 0 ? { excludedTools: disabledTools } : {};
+
+    if (serverState.server.type === "http" && serverState.server.url) {
+      config[serverState.server.name] = {
+        type: "http",
+        url: serverState.server.url,
+        ...excludedTools,
+      };
+    } else if (serverState.server.type === "stdio" && serverState.server.command) {
+      config[serverState.server.name] = {
+        type: "stdio",
+        command: serverState.server.command,
+        args: serverState.server.args || [],
+        env: serverState.server.env || {},
+        ...excludedTools,
+      };
+    }
+  }
+
+  return config;
+}
+
+function mergeMCPServers(
+  settingsServers: MCPServerEntry[] = [],
+  discoveredServers: MCPServerEntry[] = [],
+  existingServers: MCPServerState[] = [],
+): MCPServerState[] {
+  const merged: MCPServerState[] = [];
+  const seen = new Set<string>();
+  const existingByName = new Map(existingServers.map((server) => [server.server.name, server]));
+
+  const appendServer = (server: MCPServerEntry, fallbackSource: MCPServerState["source"]) => {
+    if (seen.has(server.name)) return;
+    seen.add(server.name);
+
+    const existing = existingByName.get(server.name);
+    const enabled = existing?.enabled ?? server.enabled;
+    const source = server.source || fallbackSource;
+
+    merged.push({
+      server: { ...server, enabled, source },
+      enabled,
+      tools: existing?.tools.map((tool) => ({ ...tool })) || [],
+      source,
+    });
+  };
+
+  for (const server of settingsServers) {
+    appendServer(server, "settings");
+  }
+
+  for (const server of discoveredServers) {
+    appendServer(server, server.source || "vault");
+  }
+
+  return merged;
+}
+
 export const CopilotChatPanel: React.FC = () => {
   const ctx = useContext(PluginContext);
   const initialized = useRef(false);
@@ -84,12 +149,34 @@ export const CopilotChatPanel: React.FC = () => {
     setModel,
     setAvailableModels,
     setDiscoveredAgents,
+    setMCPServers,
     addCustomAgent,
     newConversation,
     clearMessages,
     setAgent,
     discoveredAgents,
+    getEnabledMCPConfig,
   } = useChatStore();
+
+  const recreateSession = useCallback(
+    async (overrides: { model?: string; mode?: ChatMode } = {}) => {
+      if (!ctx) return;
+      if (initPromise.current) await initPromise.current;
+
+      const model = overrides.model ?? currentModel;
+      const mode = overrides.mode ?? currentMode;
+      const tools = mode === ChatMode.Agent ? createVaultTools(ctx.app) : undefined;
+
+      await ctx.copilotService.createSession({
+        model,
+        mode,
+        tools,
+        mcpServers: getEnabledMCPConfig(),
+      });
+      setSessionId(ctx.copilotService.getSessionId());
+    },
+    [ctx, currentMode, currentModel, getEnabledMCPConfig, setSessionId],
+  );
 
   useEffect(() => {
     if (!ctx || initialized.current) return;
@@ -110,15 +197,28 @@ export const CopilotChatPanel: React.FC = () => {
           // Non-fatal: fall back to static model list
         }
 
-        // Discover agents from .copilot/agents/, .github/agents/, ~/.copilot/agents/
+        const initialMCPServers = mergeMCPServers(ctx.settings.mcpServers, [], useChatStore.getState().mcpServers);
+        setMCPServers(initialMCPServers);
+        let sessionMCPConfig = buildEnabledMCPConfig(initialMCPServers);
+
+        // Discover agents and MCP servers from .copilot/, .github/, and home config.
         try {
           const discovery = new ConfigDiscovery(ctx.app);
           const config = await discovery.discover();
           if (config.agents.length > 0) {
             setDiscoveredAgents(config.agents);
           }
+
+          const discoveredMCPServers = ctx.settings.inheritConfig ? config.mcpServers : [];
+          const mergedMCPServers = mergeMCPServers(
+            ctx.settings.mcpServers,
+            discoveredMCPServers,
+            useChatStore.getState().mcpServers,
+          );
+          setMCPServers(mergedMCPServers);
+          sessionMCPConfig = buildEnabledMCPConfig(mergedMCPServers);
         } catch {
-          // Non-fatal: continue without discovered agents
+          // Non-fatal: continue without discovered agents or MCP servers
         }
 
         const tools =
@@ -129,6 +229,7 @@ export const CopilotChatPanel: React.FC = () => {
           model: ctx.settings.defaultModel,
           mode: ctx.settings.defaultMode,
           tools,
+          mcpServers: sessionMCPConfig,
         });
         setSessionId(ctx.copilotService.getSessionId());
         setInitState("ready");
@@ -319,32 +420,21 @@ export const CopilotChatPanel: React.FC = () => {
     async (model: string) => {
       if (!ctx) return;
       setModel(model);
-      if (initPromise.current) await initPromise.current;
-      // Re-create session with new model (keeps messages in UI)
       try {
-        const tools = currentMode === ChatMode.Agent ? createVaultTools(ctx.app) : undefined;
-        await ctx.copilotService.createSession({
-          model,
-          mode: currentMode,
-          tools,
-        });
-        setSessionId(ctx.copilotService.getSessionId());
+        await recreateSession({ model });
       } catch (err: any) {
         setError(friendlyError(err.message));
       }
     },
-    [ctx, currentMode],
+    [ctx, recreateSession, setError, setModel],
   );
 
   const handleModeSwitch = useCallback(
     async (mode: ChatMode) => {
       if (!ctx) return;
-      if (initPromise.current) await initPromise.current;
       try {
-        const tools = mode === ChatMode.Agent ? createVaultTools(ctx.app) : undefined;
-        await ctx.copilotService.switchMode(mode, tools);
+        await recreateSession({ mode });
         setMode(mode);
-        setSessionId(ctx.copilotService.getSessionId());
         addMessage({
           id: generateId(),
           role: "system",
@@ -356,29 +446,30 @@ export const CopilotChatPanel: React.FC = () => {
         setError(friendlyError(err.message));
       }
     },
-    [ctx, addMessage, setMode, setSessionId, setError],
+    [ctx, addMessage, recreateSession, setError, setMode],
   );
 
   const handleNewConversation = useCallback(async () => {
     if (!ctx) return;
-    if (initPromise.current) await initPromise.current;
     lastUserPrompt.current = null;
     lastUserDisplay.current = null;
     lastUserAttachments.current = undefined;
     newConversation();
     try {
-      const tools =
-        currentMode === ChatMode.Agent ? createVaultTools(ctx.app) : undefined;
-      await ctx.copilotService.createSession({
-        model: currentModel,
-        mode: currentMode,
-        tools,
-      });
-      setSessionId(ctx.copilotService.getSessionId());
+      await recreateSession();
     } catch (err: any) {
       setError(friendlyError(err.message));
     }
-  }, [ctx, currentMode, currentModel]);
+  }, [ctx, newConversation, recreateSession, setError]);
+
+  const handleMCPChange = useCallback(async () => {
+    if (!ctx) return;
+    try {
+      await recreateSession();
+    } catch (err: any) {
+      setError(friendlyError(err.message));
+    }
+  }, [ctx, recreateSession, setError]);
 
   const handleHistoryClick = useCallback(() => {
     setShowHistory(true);
@@ -493,6 +584,7 @@ export const CopilotChatPanel: React.FC = () => {
         onRetry={handleRetry}
         onModeSwitch={handleModeSwitch}
         onModelChange={handleModelChange}
+        onMCPChange={handleMCPChange}
         onAddAgent={handleAddAgent}
         isLoading={isLoading}
         canRetry={canRetry}

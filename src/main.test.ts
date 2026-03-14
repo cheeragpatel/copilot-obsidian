@@ -264,11 +264,19 @@ describe("CopilotPlugin", () => {
     expect(app.workspace.revealLeaf).toHaveBeenCalledWith(existingLeaf);
   });
 
-  it("loadSettings() loads data and merges with defaults", async () => {
+  it("loadSettings() loads data, merges defaults, and normalizes settings MCP sources", async () => {
     const { plugin } = createPlugin();
     vi.mocked(plugin.loadData).mockResolvedValue({
       cliPath: "gh-copilot",
       openOnStartup: true,
+      mcpServers: [
+        {
+          name: "docs",
+          type: "http",
+          url: "https://docs.example.com",
+          enabled: true,
+        },
+      ],
     });
 
     await plugin.loadSettings();
@@ -278,6 +286,15 @@ describe("CopilotPlugin", () => {
       ...DEFAULT_SETTINGS,
       cliPath: "gh-copilot",
       openOnStartup: true,
+      mcpServers: [
+        {
+          name: "docs",
+          type: "http",
+          url: "https://docs.example.com",
+          enabled: true,
+          source: "settings",
+        },
+      ],
     });
   });
 

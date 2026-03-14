@@ -1,6 +1,6 @@
 import { useChatStore, generateId } from "./chatStore";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
-import type { ChatMessage, ConversationMeta, ToolCallInfo } from "../types/chat";
+import type { ChatMessage, ConversationMeta, ToolCallInfo, MCPServerState } from "../types/chat";
 
 const initialState = {
   messages: [] as ChatMessage[],
@@ -11,6 +11,9 @@ const initialState = {
   error: null as string | null,
   selectedAgent: null as string | null,
   conversations: [] as ConversationMeta[],
+  availableModels: [] as { id: string; name: string }[],
+  discoveredAgents: [] as [],
+  mcpServers: [] as MCPServerState[],
 };
 
 let messageCounter = 0;
@@ -31,6 +34,19 @@ const createToolCall = (overrides: Partial<ToolCallInfo> = {}): ToolCallInfo => 
   ...overrides,
 });
 
+const createMCPServerState = (overrides: Partial<MCPServerState> = {}): MCPServerState => ({
+  server: {
+    name: `server-${++messageCounter}`,
+    type: "http",
+    url: `https://example.com/${messageCounter}`,
+    enabled: true,
+  },
+  enabled: true,
+  tools: [],
+  source: "settings",
+  ...overrides,
+});
+
 beforeEach(() => {
   messageCounter = 0;
   useChatStore.setState(initialState);
@@ -47,6 +63,7 @@ describe("useChatStore", () => {
       error: null,
       selectedAgent: null,
       conversations: [],
+      mcpServers: [],
     });
   });
 
@@ -246,6 +263,110 @@ describe("useChatStore", () => {
     useChatStore.getState().setConversations(conversations);
 
     expect(useChatStore.getState().conversations).toEqual(conversations);
+  });
+
+  it("setMCPServers replaces the MCP servers array", () => {
+    const servers = [
+      createMCPServerState({
+        server: { name: "docs", type: "http", url: "https://docs.example.com", enabled: true },
+        tools: [{ name: "search", enabled: true }],
+      }),
+      createMCPServerState({
+        server: { name: "local", type: "stdio", command: "node", args: ["server.js"], enabled: true },
+        tools: [{ name: "read", enabled: true }],
+        source: "vault",
+      }),
+    ];
+
+    useChatStore.getState().setMCPServers(servers);
+
+    expect(useChatStore.getState().mcpServers).toEqual(servers);
+  });
+
+  it("toggleMCP flips the enabled state for the matching server", () => {
+    useChatStore.getState().setMCPServers([
+      createMCPServerState({
+        server: { name: "docs", type: "http", url: "https://docs.example.com", enabled: true },
+        enabled: true,
+      }),
+      createMCPServerState({
+        server: { name: "local", type: "http", url: "https://local.example.com", enabled: true },
+        enabled: false,
+      }),
+    ]);
+
+    useChatStore.getState().toggleMCP("docs");
+
+    expect(useChatStore.getState().mcpServers.map((server) => ({
+      name: server.server.name,
+      enabled: server.enabled,
+    }))).toEqual([
+      { name: "docs", enabled: false },
+      { name: "local", enabled: false },
+    ]);
+  });
+
+  it("toggleMCPTool flips the enabled state for a tool on the matching server", () => {
+    useChatStore.getState().setMCPServers([
+      createMCPServerState({
+        server: { name: "docs", type: "http", url: "https://docs.example.com", enabled: true },
+        tools: [
+          { name: "search", enabled: true },
+          { name: "fetch", enabled: false },
+        ],
+      }),
+    ]);
+
+    useChatStore.getState().toggleMCPTool("docs", "search");
+
+    expect(useChatStore.getState().mcpServers[0].tools).toEqual([
+      { name: "search", enabled: false },
+      { name: "fetch", enabled: false },
+    ]);
+  });
+
+  it("getEnabledMCPConfig returns only enabled servers and disabled tools as excludedTools", () => {
+    useChatStore.getState().setMCPServers([
+      createMCPServerState({
+        server: { name: "docs", type: "http", url: "https://docs.example.com", enabled: true },
+        enabled: true,
+        tools: [
+          { name: "search", enabled: true },
+          { name: "fetch", enabled: false },
+        ],
+      }),
+      createMCPServerState({
+        server: {
+          name: "local",
+          type: "stdio",
+          command: "npx",
+          args: ["@mcp/server"],
+          env: { TOKEN: "secret" },
+          enabled: true,
+        },
+        enabled: true,
+        tools: [{ name: "read", enabled: true }],
+      }),
+      createMCPServerState({
+        server: { name: "disabled", type: "http", url: "https://disabled.example.com", enabled: false },
+        enabled: false,
+        tools: [{ name: "unused", enabled: false }],
+      }),
+    ]);
+
+    expect(useChatStore.getState().getEnabledMCPConfig()).toEqual({
+      docs: {
+        type: "http",
+        url: "https://docs.example.com",
+        excludedTools: ["fetch"],
+      },
+      local: {
+        type: "stdio",
+        command: "npx",
+        args: ["@mcp/server"],
+        env: { TOKEN: "secret" },
+      },
+    });
   });
 
   it("newConversation resets chat-specific state", () => {

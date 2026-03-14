@@ -7,6 +7,7 @@ import { ChatMode } from "../types/constants";
 import { BUILT_IN_COMMANDS } from "../commands/SlashCommandRegistry";
 import { ModeSelector } from "./ModeSelector";
 import { ModelSelector } from "./ModelSelector";
+import { MCPPicker } from "./MCPPicker";
 import { AgentPicker } from "./AgentPicker";
 import type { FileAttachment } from "../types/chat";
 import type { CustomAgentEntry } from "../types/settings";
@@ -17,6 +18,7 @@ interface ChatInputProps {
   onRetry?: () => void;
   onModeSwitch: (mode: ChatMode) => void;
   onModelChange?: (model: string) => void;
+  onMCPChange?: () => void;
   onAddAgent?: (agent: CustomAgentEntry) => void;
   isLoading: boolean;
   canRetry?: boolean;
@@ -48,6 +50,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onRetry,
   onModeSwitch,
   onModelChange,
+  onMCPChange,
   onAddAgent,
   isLoading,
   canRetry,
@@ -439,6 +442,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       <div className="copilot-chat-controls">
         <ModeSelector currentMode={currentMode} onModeChange={onModeSwitch} />
         <ModelSelector onModelChange={onModelChange} />
+        <MCPPicker onMCPChange={onMCPChange} />
         <AgentPicker agents={customAgents} onAddAgent={onAddAgent} />
       </div>
       {input.length > 0 && (

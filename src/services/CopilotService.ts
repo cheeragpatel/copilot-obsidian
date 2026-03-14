@@ -145,24 +145,31 @@ export class CopilotService {
       discoveredConfig = await discovery.discover();
     }
 
-    // Build MCP server config from settings
-    const mcpServers = { ...(options.mcpServers || this.buildMCPConfig()) };
+    const hasExplicitMCPServers = Object.prototype.hasOwnProperty.call(options, "mcpServers");
 
-    // Merge discovered MCP servers (settings take precedence by name)
-    for (const discovered of discoveredConfig.mcpServers) {
-      if (!mcpServers[discovered.name]) {
-        if (discovered.type === "http") {
-          mcpServers[discovered.name] = {
-            type: "http",
-            url: discovered.url,
-          };
-        } else if (discovered.type === "stdio") {
-          mcpServers[discovered.name] = {
-            type: "stdio",
-            command: discovered.command,
-            args: discovered.args || [],
-            env: discovered.env || {},
-          };
+    // Build MCP server config from settings unless the caller provided an explicit selection.
+    const mcpServers = hasExplicitMCPServers
+      ? { ...(options.mcpServers || {}) }
+      : this.buildMCPConfig();
+
+    // Merge discovered MCP servers (settings take precedence by name) unless the caller
+    // already provided the exact MCP set to use for this session.
+    if (!hasExplicitMCPServers) {
+      for (const discovered of discoveredConfig.mcpServers) {
+        if (!mcpServers[discovered.name]) {
+          if (discovered.type === "http") {
+            mcpServers[discovered.name] = {
+              type: "http",
+              url: discovered.url,
+            };
+          } else if (discovered.type === "stdio") {
+            mcpServers[discovered.name] = {
+              type: "stdio",
+              command: discovered.command,
+              args: discovered.args || [],
+              env: discovered.env || {},
+            };
+          }
         }
       }
     }

@@ -106,7 +106,17 @@ export default class CopilotPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loaded = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = {
+      ...loaded,
+      mcpServers: Array.isArray(loaded.mcpServers)
+        ? loaded.mcpServers.map((server: PluginSettings["mcpServers"][number]) => ({
+            ...server,
+            source: "settings" as const,
+          }))
+        : [],
+      customAgents: Array.isArray(loaded.customAgents) ? loaded.customAgents : [],
+    };
   }
 
   async saveSettings() {
