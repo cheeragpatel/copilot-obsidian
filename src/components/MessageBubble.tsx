@@ -1,8 +1,10 @@
 import * as React from "react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { ChatMessage } from "../types/chat";
 import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
 
@@ -31,6 +33,12 @@ const CodeBlockCopyButton: React.FC<{ code: string }> = ({ code }) => {
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const [copied, setCopied] = useState(false);
+
+  // Detect Obsidian dark/light theme
+  const isDark = useMemo(() => {
+    return document.body.classList.contains("theme-dark");
+  }, []);
+  const codeTheme = isDark ? oneDark : oneLight;
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(message.content);
@@ -93,6 +101,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
                     <CodeBlockCopyButton code={codeStr} />
                     <SyntaxHighlighter
                       language={match ? match[1] : "text"}
+                      style={codeTheme}
                       PreTag="div"
                       {...props}
                     >
