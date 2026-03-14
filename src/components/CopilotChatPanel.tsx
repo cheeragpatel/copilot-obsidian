@@ -169,7 +169,7 @@ export const CopilotChatPanel: React.FC = () => {
     setMCPServers,
     addCustomAgent,
     newConversation,
-    clearMessages,
+    setMessages,
     setAgent,
     discoveredAgents,
     getEnabledMCPConfig,
@@ -194,6 +194,26 @@ export const CopilotChatPanel: React.FC = () => {
     },
     [ctx, currentMode, currentModel, getEnabledMCPConfig, setSessionId],
   );
+
+  const saveConversation = useCallback(async () => {
+    if (!ctx?.conversationStore) return;
+
+    const state = useChatStore.getState();
+    if (state.messages.length === 0) return;
+
+    const firstUserMessage = state.messages.find((message) => message.role === "user");
+    const title = firstUserMessage?.content.substring(0, 80) || "New conversation";
+
+    await ctx.conversationStore.save({
+      sessionId: state.currentSessionId || ctx.copilotService.getSessionId() || "unknown",
+      title,
+      model: state.currentModel,
+      mode: state.currentMode,
+      messages: state.messages.filter((message) => !message.isStreaming),
+      lastUpdated: Date.now(),
+      createdAt: Date.now(),
+    });
+  }, [ctx]);
 
   useEffect(() => {
     if (!ctx || initialized.current) return;
@@ -299,12 +319,23 @@ export const CopilotChatPanel: React.FC = () => {
           completeAllToolCalls();
           setLoading(false);
           setLastMessageStreaming(false);
+          void saveConversation();
           break;
       }
     });
 
     return () => unsubscribe();
-  }, [ctx]);
+  }, [
+    ctx,
+    addToolCall,
+    appendToLastAssistantMessage,
+    completeAllToolCalls,
+    saveConversation,
+    setError,
+    setLastMessageStreaming,
+    setLoading,
+    updateToolCall,
+  ]);
 
   useEffect(() => {
     if (!ctx || !showHistory) return;
@@ -312,22 +343,13 @@ export const CopilotChatPanel: React.FC = () => {
     let cancelled = false;
 
     const loadConversations = async () => {
-      if (initPromise.current) {
-        await initPromise.current;
-      }
-
       try {
-        const sessions = await ctx.copilotService.listSessions();
+        const persistedConversations = await ctx.conversationStore.getConversationMetas();
         if (cancelled) return;
 
-        const nextConversations = sessions
-          .filter((session: any) => session?.sessionId)
-          .map((session: any) => toConversationMeta(session, currentModel))
-          .sort(
-            (a: ConversationMeta, b: ConversationMeta) => b.lastUpdated - a.lastUpdated,
-          );
-
-        setConversations(nextConversations);
+        setConversations(
+          persistedConversations.sort((left, right) => right.lastUpdated - left.lastUpdated),
+        );
       } catch (err: any) {
         if (!cancelled) {
           setError(friendlyError(err.message));
@@ -340,7 +362,7 @@ export const CopilotChatPanel: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [ctx, showHistory, currentModel, setConversations, setError]);
+  }, [ctx, showHistory, setConversations, setError]);
 
   const handleSend = useCallback(
     async (text: string, attachments?: FileAttachment[]) => {
@@ -468,6 +490,8 @@ export const CopilotChatPanel: React.FC = () => {
 
   const handleNewConversation = useCallback(async () => {
     if (!ctx) return;
+
+    await saveConversation();
     lastUserPrompt.current = null;
     lastUserDisplay.current = null;
     lastUserAttachments.current = undefined;
@@ -477,7 +501,7 @@ export const CopilotChatPanel: React.FC = () => {
     } catch (err: any) {
       setError(friendlyError(err.message));
     }
-  }, [ctx, newConversation, recreateSession, setError]);
+  }, [ctx, newConversation, recreateSession, saveConversation, setError]);
 
   const handleMCPChange = useCallback(async () => {
     if (!ctx) return;
@@ -495,21 +519,27 @@ export const CopilotChatPanel: React.FC = () => {
   const handleHistorySelect = useCallback(
     async (sessionId: string) => {
       if (!ctx) return;
-      if (initPromise.current) await initPromise.current;
+
+      const restoredMessages = await ctx.conversationStore.getMessages(sessionId);
+      setMessages(restoredMessages);
+      setShowHistory(false);
+      lastUserPrompt.current = null;
+      lastUserDisplay.current = null;
+      lastUserAttachments.current = undefined;
 
       try {
+        if (initPromise.current) await initPromise.current;
         await ctx.copilotService.resumeSession(sessionId);
-        clearMessages();
-        lastUserPrompt.current = null;
-        lastUserDisplay.current = null;
-        lastUserAttachments.current = undefined;
         setSessionId(ctx.copilotService.getSessionId() ?? sessionId);
-        setShowHistory(false);
-      } catch (err: any) {
-        setError(friendlyError(err.message));
+      } catch {
+        try {
+          await recreateSession();
+        } catch (err: any) {
+          setError(friendlyError(err.message));
+        }
       }
     },
-    [ctx, clearMessages, setSessionId, setError],
+    [ctx, recreateSession, setError, setMessages, setSessionId],
   );
 
   const handleHistoryClose = useCallback(() => {
@@ -526,7 +556,7 @@ export const CopilotChatPanel: React.FC = () => {
     } catch {
       // Ignore abort errors
     }
-  }, [ctx]);
+  }, [ctx, completeAllToolCalls, setLastMessageStreaming, setLoading]);
 
   const handleRetry = useCallback(async () => {
     if (!ctx || !lastUserPrompt.current) return;

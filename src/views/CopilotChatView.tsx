@@ -3,12 +3,14 @@ import { Root, createRoot } from "react-dom/client";
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { COPILOT_CHAT_VIEW_TYPE } from "../types/constants";
 import { CopilotChatPanel } from "../components/CopilotChatPanel";
+import type { ConversationStoreLike } from "../services/ConversationStore";
 
 // Context for passing plugin reference to React components
 export interface CopilotPluginContext {
   app: any;
   settings: any;
   copilotService: any;
+  conversationStore: ConversationStoreLike;
   saveSettings: () => Promise<void>;
 }
 
@@ -47,6 +49,7 @@ export class CopilotChatView extends ItemView {
             app: this.plugin.app,
             settings: this.plugin.settings,
             copilotService: this.plugin.copilotService,
+            conversationStore: this.plugin.conversationStore,
             saveSettings: () => this.plugin.saveSettings(),
           }}
         >

@@ -4,14 +4,14 @@ vi.mock("../tools/vaultTools", () => ({
   createVaultTools: vi.fn().mockReturnValue([]),
 }));
 
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useChatStore } from "../store/chatStore";
 import type { ChatMessage, ConversationMeta, MCPServerState } from "../types/chat";
 import { ChatMode } from "../types/constants";
 import { ConfigDiscovery } from "../services/ConfigDiscovery";
 import { CopilotChatPanel } from "./CopilotChatPanel";
-import { mockService, renderWithContext } from "./testUtils";
+import { mockConversationStore, mockService, renderWithContext } from "./testUtils";
 
 const emptyDiscovery = {
   skills: [],
@@ -38,6 +38,11 @@ beforeEach(() => {
   mockService.resumeSession.mockResolvedValue(undefined);
   mockService.listSessions.mockResolvedValue([]);
   mockService.getSessionId.mockReturnValue("test-session");
+  mockConversationStore.loadAll.mockResolvedValue([]);
+  mockConversationStore.save.mockResolvedValue(undefined);
+  mockConversationStore.delete.mockResolvedValue(undefined);
+  mockConversationStore.getConversationMetas.mockResolvedValue([]);
+  mockConversationStore.getMessages.mockResolvedValue([]);
 
   useChatStore.setState({
     messages: [],
@@ -373,43 +378,49 @@ describe("CopilotChatPanel", () => {
     expect(screen.getByText("Switched to agent mode")).toBeInTheDocument();
   });
 
-  it("loads conversation history and resumes a selected session", async () => {
+  it("loads persisted conversation history and restores messages on selection", async () => {
     const user = userEvent.setup();
-    const sessions = [
+    const restoredMessages: ChatMessage[] = [
+      {
+        id: "message-1",
+        role: "user",
+        content: "Restored question",
+        timestamp: 1,
+        isStreaming: false,
+      },
+      {
+        id: "message-2",
+        role: "assistant",
+        content: "Restored answer",
+        timestamp: 2,
+        isStreaming: false,
+      },
+    ];
+
+    mockConversationStore.getConversationMetas.mockResolvedValueOnce([
       {
         sessionId: "session-2",
-        summary: "Older thread",
+        title: "Older thread",
         model: "gpt-4.1",
         messageCount: 2,
-        modifiedTime: new Date("2024-01-01T00:00:00Z"),
+        lastUpdated: new Date("2024-01-01T00:00:00Z").getTime(),
       },
       {
         sessionId: "session-1",
-        summary: "Recent thread",
+        title: "Recent thread",
         model: "gpt-4o",
         messageCount: 4,
-        modifiedTime: new Date("2024-01-02T00:00:00Z"),
+        lastUpdated: new Date("2024-01-02T00:00:00Z").getTime(),
       },
-    ];
-    mockService.listSessions.mockResolvedValueOnce(sessions);
+    ] satisfies ConversationMeta[]);
+    mockConversationStore.getMessages.mockResolvedValueOnce(restoredMessages);
     mockService.getSessionId.mockReturnValue("resumed-session");
-    useChatStore.setState({
-      messages: [
-        {
-          id: "message-1",
-          role: "user",
-          content: "Current thread",
-          timestamp: 1,
-          isStreaming: false,
-        },
-      ],
-    });
 
     await renderPanel();
     await user.click(screen.getByTitle("Conversation history"));
 
     await waitFor(() => {
-      expect(mockService.listSessions).toHaveBeenCalledTimes(1);
+      expect(mockConversationStore.getConversationMetas).toHaveBeenCalledTimes(1);
     });
     expect(await screen.findByText("Recent thread")).toBeInTheDocument();
     expect(useChatStore.getState().conversations).toEqual([
@@ -432,15 +443,129 @@ describe("CopilotChatPanel", () => {
     await user.click(screen.getByText("Recent thread"));
 
     await waitFor(() => {
+      expect(mockConversationStore.getMessages).toHaveBeenCalledWith("session-1");
       expect(mockService.resumeSession).toHaveBeenCalledWith("session-1");
     });
     expect(useChatStore.getState().currentSessionId).toBe("resumed-session");
-    expect(useChatStore.getState().messages).toEqual([]);
+    expect(useChatStore.getState().messages).toEqual(restoredMessages);
     await waitFor(() => {
       expect(screen.queryByText("Conversations")).not.toBeInTheDocument();
     });
   });
 
+  it("creates a fresh session when resuming a persisted conversation fails", async () => {
+    const user = userEvent.setup();
+    const restoredMessages: ChatMessage[] = [
+      {
+        id: "message-1",
+        role: "user",
+        content: "Persisted thread",
+        timestamp: 1,
+        isStreaming: false,
+      },
+    ];
+
+    mockConversationStore.getConversationMetas.mockResolvedValueOnce([
+      {
+        sessionId: "session-1",
+        title: "Persisted thread",
+        model: "gpt-4.1",
+        messageCount: 1,
+        lastUpdated: 1,
+      },
+    ]);
+    mockConversationStore.getMessages.mockResolvedValueOnce(restoredMessages);
+    mockService.resumeSession.mockRejectedValueOnce(new Error("expired"));
+
+    await renderPanel();
+    await user.click(screen.getByTitle("Conversation history"));
+    await user.click(await screen.findByText("Persisted thread"));
+
+    await waitFor(() => {
+      expect(mockService.resumeSession).toHaveBeenCalledWith("session-1");
+      expect(mockService.createSession).toHaveBeenCalledTimes(2);
+    });
+    expect(useChatStore.getState().messages).toEqual(restoredMessages);
+  });
+
+  it("saves conversations when a response finishes", async () => {
+    const handlers: Array<(event: any) => void> = [];
+    mockService.onEvent.mockImplementation((handler: (event: any) => void) => {
+      handlers.push(handler);
+      return vi.fn();
+    });
+
+    await renderPanel();
+    useChatStore.setState({
+      messages: [
+        {
+          id: "message-1",
+          role: "user",
+          content: "Summarize this note",
+          timestamp: 1,
+          isStreaming: false,
+        },
+        {
+          id: "message-2",
+          role: "assistant",
+          content: "Done",
+          timestamp: 2,
+          isStreaming: false,
+        },
+      ],
+      currentSessionId: "session-1",
+    });
+
+    await act(async () => {
+      handlers[0]?.({ type: "session.idle", data: {} });
+    });
+
+    await waitFor(() => {
+      expect(mockConversationStore.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "session-1",
+          title: "Summarize this note",
+          model: "gpt-4.1",
+          mode: ChatMode.Ask,
+          messages: [
+            expect.objectContaining({ role: "user", content: "Summarize this note" }),
+            expect.objectContaining({ role: "assistant", content: "Done" }),
+          ],
+        }),
+      );
+    });
+  });
+
+  it("saves the current conversation before starting a new one", async () => {
+    const user = userEvent.setup();
+    mockService.getSessionId.mockReturnValue("session-1");
+    useChatStore.setState({
+      messages: [
+        {
+          id: "message-1",
+          role: "user",
+          content: "Keep this thread",
+          timestamp: 1,
+          isStreaming: false,
+        },
+      ],
+      currentSessionId: "session-1",
+    });
+
+    await renderPanel();
+    await user.click(screen.getByTitle("New conversation"));
+
+    await waitFor(() => {
+      expect(mockConversationStore.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "session-1",
+          title: "Keep this thread",
+        }),
+      );
+      expect(mockService.createSession).toHaveBeenCalledTimes(2);
+    });
+    expect(useChatStore.getState().messages).toEqual([]);
+  });
   it("calls abort from the stop button and resets loading state", async () => {
     const user = userEvent.setup();
     const messages: ChatMessage[] = [

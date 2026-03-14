@@ -202,6 +202,17 @@ describe("useChatStore", () => {
     expect(useChatStore.getState().error).toBeNull();
   });
 
+  it("setMessages replaces the full message list", () => {
+    const messages = [
+      createMessage({ role: "user", content: "first" }),
+      createMessage({ role: "assistant", content: "second" }),
+    ];
+
+    useChatStore.getState().setMessages(messages);
+
+    expect(useChatStore.getState().messages).toEqual(messages);
+  });
+
   it("setMode updates the current mode", () => {
     useChatStore.getState().setMode(ChatMode.Agent);
 

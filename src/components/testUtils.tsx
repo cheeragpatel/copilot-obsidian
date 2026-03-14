@@ -21,6 +21,14 @@ export const mockService = {
   destroy: vi.fn().mockResolvedValue(undefined),
 };
 
+export const mockConversationStore = {
+  loadAll: vi.fn().mockResolvedValue([]),
+  save: vi.fn().mockResolvedValue(undefined),
+  delete: vi.fn().mockResolvedValue(undefined),
+  getConversationMetas: vi.fn().mockResolvedValue([]),
+  getMessages: vi.fn().mockResolvedValue([]),
+};
+
 type ContextOverrides = Partial<CopilotPluginContext> & {
   app?: any;
   settings?: Record<string, any>;
@@ -62,6 +70,7 @@ export function createPluginContext(
       ...mockService,
       ...(overrides.copilotService ?? {}),
     },
+    conversationStore: overrides.conversationStore ?? mockConversationStore,
     saveSettings: overrides.saveSettings ?? vi.fn(),
   };
 }

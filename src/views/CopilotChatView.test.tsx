@@ -24,6 +24,7 @@ const mockPlugin = {
   app: {},
   settings: { defaultModel: "gpt-4.1", defaultMode: "ask" },
   copilotService: {},
+  conversationStore: {},
   saveSettings: vi.fn(),
 };
 

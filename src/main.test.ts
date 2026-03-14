@@ -1,6 +1,7 @@
 import CopilotPlugin from "./main";
 import { CopilotSettingsTab } from "./settings/SettingsTab";
 import { CopilotService } from "./services/CopilotService";
+import { STORAGE_KEY } from "./services/ConversationStore";
 import { COPILOT_CHAT_VIEW_TYPE } from "./types/constants";
 import { DEFAULT_SETTINGS } from "./types/settings";
 
@@ -176,6 +177,15 @@ describe("CopilotPlugin", () => {
     );
   });
 
+  it("onload() creates ConversationStore", async () => {
+    const { plugin } = createPlugin();
+
+    await plugin.onload();
+
+    expect(plugin.conversationStore).toBeDefined();
+    expect(typeof plugin.conversationStore.getConversationMetas).toBe("function");
+  });
+
   it("onload() auto-opens chat when openOnStartup is true", async () => {
     const { plugin, app } = createPlugin();
     vi.mocked(plugin.loadData).mockResolvedValue({ openOnStartup: true });
@@ -269,6 +279,17 @@ describe("CopilotPlugin", () => {
     vi.mocked(plugin.loadData).mockResolvedValue({
       cliPath: "gh-copilot",
       openOnStartup: true,
+      [STORAGE_KEY]: [
+        {
+          sessionId: "session-1",
+          title: "Stored conversation",
+          model: "gpt-4.1",
+          mode: "ask",
+          messages: [],
+          lastUpdated: 1,
+          createdAt: 1,
+        },
+      ],
       mcpServers: [
         {
           name: "docs",
@@ -296,12 +317,25 @@ describe("CopilotPlugin", () => {
         },
       ],
     });
+    expect(plugin.settings).not.toHaveProperty(STORAGE_KEY);
   });
 
-  it("saveSettings() saves data and updates service settings", async () => {
+  it("saveSettings() preserves stored conversations and updates service settings", async () => {
     const { plugin } = createPlugin();
     const updateSettings = vi.fn();
+    const storedConversations = [
+      {
+        sessionId: "session-1",
+        title: "Stored conversation",
+        model: "gpt-4.1",
+        mode: "ask",
+        messages: [],
+        lastUpdated: 1,
+        createdAt: 1,
+      },
+    ];
 
+    vi.mocked(plugin.loadData).mockResolvedValue({ [STORAGE_KEY]: storedConversations });
     plugin.settings = {
       ...DEFAULT_SETTINGS,
       cliPath: "custom-copilot",
@@ -311,7 +345,10 @@ describe("CopilotPlugin", () => {
 
     await plugin.saveSettings();
 
-    expect(plugin.saveData).toHaveBeenCalledWith(plugin.settings);
+    expect(plugin.saveData).toHaveBeenCalledWith({
+      ...plugin.settings,
+      [STORAGE_KEY]: storedConversations,
+    });
     expect(updateSettings).toHaveBeenCalledWith(plugin.settings);
   });
 });

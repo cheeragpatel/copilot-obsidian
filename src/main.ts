@@ -1,5 +1,6 @@
 import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { CopilotService } from "./services/CopilotService";
+import { ConversationStore, STORAGE_KEY } from "./services/ConversationStore";
 import { CopilotChatView } from "./views/CopilotChatView";
 import { CopilotSettingsTab } from "./settings/SettingsTab";
 import { COPILOT_CHAT_VIEW_TYPE } from "./types/constants";
@@ -10,11 +11,13 @@ import { clearSessionPermissions } from "./views/PermissionModal";
 export default class CopilotPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
   copilotService: CopilotService;
+  conversationStore: ConversationStore;
 
   async onload() {
     await this.loadSettings();
 
     this.copilotService = new CopilotService(this.app, this.settings);
+    this.conversationStore = new ConversationStore(this);
 
     // Register the chat view
     this.registerView(
@@ -106,7 +109,10 @@ export default class CopilotPlugin extends Plugin {
   }
 
   async loadSettings() {
-    const loaded = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loadedData = ((await this.loadData()) || {}) as Record<string, unknown>;
+    const { [STORAGE_KEY]: _storedConversations, ...rawSettings } = loadedData;
+    const loaded = Object.assign({}, DEFAULT_SETTINGS, rawSettings as Partial<PluginSettings>);
+
     this.settings = {
       ...loaded,
       mcpServers: Array.isArray(loaded.mcpServers)
@@ -120,7 +126,8 @@ export default class CopilotPlugin extends Plugin {
   }
 
   async saveSettings() {
-    await this.saveData(this.settings);
+    const existingData = ((await this.loadData()) || {}) as Record<string, unknown>;
+    await this.saveData({ ...existingData, ...this.settings });
     // Update service with new settings
     if (this.copilotService) {
       this.copilotService.updateSettings(this.settings);

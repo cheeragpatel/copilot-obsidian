@@ -26,6 +26,7 @@ interface ChatActions {
   updateToolCall: (name: string, status: ToolCallInfo["status"], result?: string) => void;
   completeAllToolCalls: () => void;
   clearMessages: () => void;
+  setMessages: (messages: ChatMessage[]) => void;
   setMode: (mode: ChatMode) => void;
   setModel: (model: string) => void;
   setAvailableModels: (models: { id: string; name: string }[]) => void;
@@ -159,6 +160,8 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
     }),
 
   clearMessages: () => set({ messages: [], error: null }),
+
+  setMessages: (messages) => set({ messages }),
 
   setMode: (mode) => set({ currentMode: mode }),
 
