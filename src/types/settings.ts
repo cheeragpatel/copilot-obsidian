@@ -7,6 +7,8 @@ export interface MCPServerEntry {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  headers?: Record<string, string>;
+  configTools?: string[];
   enabled: boolean;
   source?: "settings" | "vault" | "home";
 }

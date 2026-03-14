@@ -59,13 +59,26 @@ function buildEnabledMCPConfig(servers: MCPServerState[]): Record<string, any> {
     if (!serverState.enabled) continue;
 
     const disabledTools = serverState.tools.filter((tool) => !tool.enabled).map((tool) => tool.name);
-    const excludedTools = disabledTools.length > 0 ? { excludedTools: disabledTools } : {};
+    const enabledTools = serverState.tools.filter((tool) => tool.enabled).map((tool) => tool.name);
+    const hasConfiguredTools = !!serverState.server.configTools?.length;
+    const usesWildcardTools = !!serverState.server.configTools?.includes("*");
+    const toolConfig = hasConfiguredTools && !usesWildcardTools
+      ? {
+          tools: enabledTools.length > 0 || serverState.tools.length > 0
+            ? enabledTools
+            : serverState.server.configTools,
+        }
+      : {
+          ...(hasConfiguredTools ? { tools: serverState.server.configTools } : {}),
+          ...(disabledTools.length > 0 ? { excludedTools: disabledTools } : {}),
+        };
 
     if (serverState.server.type === "http" && serverState.server.url) {
       config[serverState.server.name] = {
         type: "http",
         url: serverState.server.url,
-        ...excludedTools,
+        ...(serverState.server.headers ? { headers: serverState.server.headers } : {}),
+        ...toolConfig,
       };
     } else if (serverState.server.type === "stdio" && serverState.server.command) {
       config[serverState.server.name] = {
@@ -73,7 +86,7 @@ function buildEnabledMCPConfig(servers: MCPServerState[]): Record<string, any> {
         command: serverState.server.command,
         args: serverState.server.args || [],
         env: serverState.server.env || {},
-        ...excludedTools,
+        ...toolConfig,
       };
     }
   }
@@ -98,10 +111,14 @@ function mergeMCPServers(
     const enabled = existing?.enabled ?? server.enabled;
     const source = server.source || fallbackSource;
 
+    const configuredTools = server.configTools && !server.configTools.includes("*")
+      ? server.configTools.map((name) => ({ name, enabled: true }))
+      : [];
+
     merged.push({
       server: { ...server, enabled, source },
       enabled,
-      tools: existing?.tools.map((tool) => ({ ...tool })) || [],
+      tools: existing?.tools.map((tool) => ({ ...tool })) || configuredTools,
       source,
     });
   };

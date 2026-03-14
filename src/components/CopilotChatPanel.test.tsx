@@ -184,6 +184,8 @@ describe("CopilotChatPanel", () => {
           name: "home-only",
           type: "http",
           url: "https://home-only.example.com",
+          headers: { CONTEXT7_API_KEY: "secret" },
+          configTools: ["query-docs", "resolve-library-id"],
           enabled: true,
           source: "home",
         },
@@ -214,11 +216,20 @@ describe("CopilotChatPanel", () => {
       name: server.server.name,
       source: server.source,
       serverSource: server.server.source,
+      tools: server.tools.map((tool) => ({ name: tool.name, enabled: tool.enabled })),
     }))).toEqual([
-      { name: "shared", source: "settings", serverSource: "settings" },
-      { name: "settings-only", source: "settings", serverSource: "settings" },
-      { name: "vault-only", source: "vault", serverSource: "vault" },
-      { name: "home-only", source: "home", serverSource: "home" },
+      { name: "shared", source: "settings", serverSource: "settings", tools: [] },
+      { name: "settings-only", source: "settings", serverSource: "settings", tools: [] },
+      { name: "vault-only", source: "vault", serverSource: "vault", tools: [] },
+      {
+        name: "home-only",
+        source: "home",
+        serverSource: "home",
+        tools: [
+          { name: "query-docs", enabled: true },
+          { name: "resolve-library-id", enabled: true },
+        ],
+      },
     ]);
 
     expect(mockService.createSession).toHaveBeenLastCalledWith(
@@ -241,6 +252,8 @@ describe("CopilotChatPanel", () => {
           "home-only": {
             type: "http",
             url: "https://home-only.example.com",
+            headers: { CONTEXT7_API_KEY: "secret" },
+            tools: ["query-docs", "resolve-library-id"],
           },
         },
       }),

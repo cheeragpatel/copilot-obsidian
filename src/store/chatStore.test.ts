@@ -369,6 +369,54 @@ describe("useChatStore", () => {
     });
   });
 
+  it("getEnabledMCPConfig preserves MCP headers and configured tool allowlists", () => {
+    useChatStore.getState().setMCPServers([
+      createMCPServerState({
+        server: {
+          name: "context7",
+          type: "http",
+          url: "https://mcp.context7.com/mcp",
+          headers: { CONTEXT7_API_KEY: "secret" },
+          configTools: ["query-docs", "resolve-library-id"],
+          enabled: true,
+        },
+        enabled: true,
+        tools: [
+          { name: "query-docs", enabled: true },
+          { name: "resolve-library-id", enabled: false },
+        ],
+      }),
+      createMCPServerState({
+        server: {
+          name: "azure",
+          type: "stdio",
+          command: "npx",
+          args: ["-y", "@azure/mcp@latest", "server", "start"],
+          configTools: ["*"],
+          enabled: true,
+        },
+        enabled: true,
+        tools: [],
+      }),
+    ]);
+
+    expect(useChatStore.getState().getEnabledMCPConfig()).toEqual({
+      context7: {
+        type: "http",
+        url: "https://mcp.context7.com/mcp",
+        headers: { CONTEXT7_API_KEY: "secret" },
+        tools: ["query-docs"],
+      },
+      azure: {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@azure/mcp@latest", "server", "start"],
+        env: {},
+        tools: ["*"],
+      },
+    });
+  });
+
   it("newConversation resets chat-specific state", () => {
     const conversations = [
       {

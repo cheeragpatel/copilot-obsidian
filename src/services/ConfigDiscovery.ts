@@ -19,12 +19,43 @@ function isVaultFolder(entry: unknown): entry is TFolder {
 
 type MCPServerSource = NonNullable<MCPServerEntry["source"]>;
 
-function asServerRecord(value: unknown): Record<string, Partial<MCPServerEntry>> {
+interface RawMCPServerEntry {
+  type?: string;
+  url?: string;
+  command?: string;
+  args?: unknown;
+  env?: unknown;
+  headers?: unknown;
+  tools?: unknown;
+}
+
+function asServerRecord(value: unknown): Record<string, RawMCPServerEntry> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
 
-  return value as Record<string, Partial<MCPServerEntry>>;
+  return value as Record<string, RawMCPServerEntry>;
+}
+
+function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    return undefined;
+  }
+
+  return value;
+}
+
+function asStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(value);
+  if (entries.some(([, entryValue]) => typeof entryValue !== "string")) {
+    return undefined;
+  }
+
+  return Object.fromEntries(entries) as Record<string, string>;
 }
 
 /**
@@ -58,6 +89,7 @@ export class ConfigDiscovery {
    *   .copilot/skills/             — personal skills
    *   .github/copilot/mcp.json     — repo MCP servers
    *   .copilot/mcp.json            — personal MCP servers
+   *   ~/.copilot/mcp-config.json   — global Copilot CLI MCP servers
    *   ~/.copilot/mcp.json          — global Copilot MCP servers
    *   ~/.copilot/config.json       — global Copilot config with mcpServers
    *   ~/Library/Application Support/github-copilot/mcp.json — macOS global MCP servers
@@ -122,6 +154,7 @@ export class ConfigDiscovery {
       }
 
       const homeCandidates = [
+        path.join(home, ".copilot", "mcp-config.json"),
         path.join(home, ".copilot", "mcp.json"),
         path.join(home, ".copilot", "config.json"),
         path.join(home, "Library", "Application Support", "github-copilot", "mcp.json"),
@@ -165,16 +198,18 @@ export class ConfigDiscovery {
 
         seen.add(name);
         const entry = rawConfig && typeof rawConfig === "object" && !Array.isArray(rawConfig)
-          ? rawConfig as Partial<MCPServerEntry>
+          ? rawConfig as RawMCPServerEntry
           : {};
 
         servers.push({
           name,
-          type: entry.type === "stdio" ? "stdio" : "http",
+          type: (entry.type === "stdio" || entry.type === "local") ? "stdio" : "http",
           url: entry.url,
           command: entry.command,
-          args: entry.args,
-          env: entry.env,
+          args: asStringArray(entry.args),
+          env: asStringRecord(entry.env),
+          headers: asStringRecord(entry.headers),
+          configTools: asStringArray(entry.tools),
           enabled: true,
           source,
         });

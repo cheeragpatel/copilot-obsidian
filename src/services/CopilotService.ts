@@ -1,7 +1,7 @@
 import { CopilotClient, defineTool, SessionEvent } from "@github/copilot-sdk";
 import type { App } from "obsidian";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
-import type { PluginSettings } from "../types/settings";
+import type { PluginSettings, MCPServerEntry } from "../types/settings";
 import type { FileAttachment } from "../types/chat";
 import { ConfigDiscovery } from "./ConfigDiscovery";
 import { promptPermission } from "../views/PermissionModal";
@@ -157,18 +157,9 @@ export class CopilotService {
     if (!hasExplicitMCPServers) {
       for (const discovered of discoveredConfig.mcpServers) {
         if (!mcpServers[discovered.name]) {
-          if (discovered.type === "http") {
-            mcpServers[discovered.name] = {
-              type: "http",
-              url: discovered.url,
-            };
-          } else if (discovered.type === "stdio") {
-            mcpServers[discovered.name] = {
-              type: "stdio",
-              command: discovered.command,
-              args: discovered.args || [],
-              env: discovered.env || {},
-            };
+          const discoveredServer = this.serializeMCPServer(discovered);
+          if (discoveredServer) {
+            mcpServers[discovered.name] = discoveredServer;
           }
         }
       }
@@ -342,22 +333,40 @@ export class CopilotService {
     this.settings = settings;
   }
 
+  private serializeMCPServer(server: MCPServerEntry): Record<string, any> | null {
+    const toolConfig = server.configTools && server.configTools.length > 0
+      ? { tools: server.configTools }
+      : {};
+
+    if (server.type === "http" && server.url) {
+      return {
+        type: "http",
+        url: server.url,
+        ...(server.headers ? { headers: server.headers } : {}),
+        ...toolConfig,
+      };
+    }
+
+    if (server.type === "stdio" && server.command) {
+      return {
+        type: "stdio",
+        command: server.command,
+        args: server.args || [],
+        env: server.env || {},
+        ...toolConfig,
+      };
+    }
+
+    return null;
+  }
+
   private buildMCPConfig(): Record<string, any> {
     const config: Record<string, any> = {};
     for (const server of this.settings.mcpServers) {
       if (!server.enabled) continue;
-      if (server.type === "http") {
-        config[server.name] = {
-          type: "http",
-          url: server.url,
-        };
-      } else if (server.type === "stdio") {
-        config[server.name] = {
-          type: "stdio",
-          command: server.command,
-          args: server.args || [],
-          env: server.env || {},
-        };
+      const serialized = this.serializeMCPServer(server);
+      if (serialized) {
+        config[server.name] = serialized;
       }
     }
     return config;

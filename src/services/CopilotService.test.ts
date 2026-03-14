@@ -133,13 +133,21 @@ describe("CopilotService", () => {
       createMockApp(),
       createSettings({
         mcpServers: [
-          { name: "docs", type: "http", url: "https://example.com/mcp", enabled: true },
+          {
+            name: "docs",
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer token" },
+            configTools: ["query-docs"],
+            enabled: true,
+          },
           {
             name: "local",
             type: "stdio",
             command: "node",
             args: ["server.js"],
             env: { TOKEN: "secret" },
+            configTools: ["*"],
             enabled: true,
           },
           { name: "disabled", type: "http", url: "https://disabled.example.com", enabled: false },
@@ -157,12 +165,15 @@ describe("CopilotService", () => {
         docs: {
           type: "http",
           url: "https://example.com/mcp",
+          headers: { Authorization: "Bearer token" },
+          tools: ["query-docs"],
         },
         local: {
           type: "stdio",
           command: "node",
           args: ["server.js"],
           env: { TOKEN: "secret" },
+          tools: ["*"],
         },
       },
     }));
@@ -254,6 +265,15 @@ describe("CopilotService", () => {
           command: "node",
           args: ["server.js"],
           env: { TOKEN: "secret" },
+          configTools: ["*"],
+          enabled: true,
+        },
+        {
+          name: "context7",
+          type: "http",
+          url: "https://mcp.context7.com/mcp",
+          headers: { CONTEXT7_API_KEY: "secret" },
+          configTools: ["query-docs", "resolve-library-id"],
           enabled: true,
         },
       ],
@@ -281,6 +301,13 @@ describe("CopilotService", () => {
           command: "node",
           args: ["server.js"],
           env: { TOKEN: "secret" },
+          tools: ["*"],
+        },
+        context7: {
+          type: "http",
+          url: "https://mcp.context7.com/mcp",
+          headers: { CONTEXT7_API_KEY: "secret" },
+          tools: ["query-docs", "resolve-library-id"],
         },
       },
     }));

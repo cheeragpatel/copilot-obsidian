@@ -185,11 +185,11 @@
 
 .copilot-mcp-dropdown {
   position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  min-width: 300px;
-  max-width: 360px;
-  max-height: 320px;
+  bottom: calc(100% + 4px);
+  right: 0;
+  min-width: 220px;
+  max-width: min(320px, 90vw);
+  max-height: 350px;
   overflow-y: auto;
   padding: 10px;
   background: var(--background-secondary);
@@ -233,6 +233,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .copilot-mcp-server {
@@ -272,6 +274,8 @@
 .copilot-mcp-server-name {
   font-size: 0.85rem;
   color: var(--text-normal);
+  white-space: normal;
+  word-wrap: break-word;
 }
 
 .copilot-mcp-server-name.is-enabled {
@@ -349,11 +353,15 @@
 
 .copilot-mcp-tool-name {
   font-weight: 500;
+  white-space: normal;
+  word-wrap: break-word;
 }
 
 .copilot-mcp-tool-description,
 .copilot-mcp-tools-empty {
   color: var(--text-muted);
+  white-space: normal;
+  word-wrap: break-word;
 }
 
 .copilot-mcp-tool-description {
@@ -370,6 +378,8 @@
   flex-direction: column;
   gap: 4px;
   color: var(--text-muted);
+  white-space: normal;
+  word-wrap: break-word;
 }
 
 /* ── Add Agent Form ── */

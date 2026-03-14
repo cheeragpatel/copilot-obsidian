@@ -215,13 +215,22 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
 
       const { server, tools } = serverState;
       const disabledTools = tools.filter((tool) => !tool.enabled).map((tool) => tool.name);
-      const excludedTools = disabledTools.length > 0 ? { excludedTools: disabledTools } : {};
+      const enabledTools = tools.filter((tool) => tool.enabled).map((tool) => tool.name);
+      const hasConfiguredTools = !!server.configTools?.length;
+      const usesWildcardTools = !!server.configTools?.includes("*");
+      const toolConfig = hasConfiguredTools && !usesWildcardTools
+        ? { tools: enabledTools.length > 0 || tools.length > 0 ? enabledTools : server.configTools }
+        : {
+            ...(hasConfiguredTools ? { tools: server.configTools } : {}),
+            ...(disabledTools.length > 0 ? { excludedTools: disabledTools } : {}),
+          };
 
       if (server.type === "http" && server.url) {
         config[server.name] = {
           type: "http",
           url: server.url,
-          ...excludedTools,
+          ...(server.headers ? { headers: server.headers } : {}),
+          ...toolConfig,
         };
       } else if (server.type === "stdio" && server.command) {
         config[server.name] = {
@@ -229,7 +238,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
           command: server.command,
           args: server.args || [],
           env: server.env || {},
-          ...excludedTools,
+          ...toolConfig,
         };
       }
     }

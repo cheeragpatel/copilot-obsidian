@@ -99,10 +99,11 @@ describe("ConfigDiscovery", () => {
       JSON.stringify({
         mcpServers: {
           local: {
-            type: "stdio",
+            type: "local",
             command: "node",
             args: ["server.js"],
             env: { TOKEN: "secret" },
+            tools: ["*"],
           },
         },
       }),
@@ -119,6 +120,8 @@ describe("ConfigDiscovery", () => {
         command: undefined,
         args: undefined,
         env: undefined,
+        headers: undefined,
+        configTools: undefined,
         enabled: true,
         source: "vault",
       },
@@ -129,6 +132,8 @@ describe("ConfigDiscovery", () => {
         command: "node",
         args: ["server.js"],
         env: { TOKEN: "secret" },
+        headers: undefined,
+        configTools: ["*"],
         enabled: true,
         source: "vault",
       },
@@ -158,6 +163,8 @@ describe("ConfigDiscovery", () => {
         command: undefined,
         args: undefined,
         env: undefined,
+        headers: undefined,
+        configTools: undefined,
         enabled: true,
         source: "vault",
       },
@@ -168,7 +175,7 @@ describe("ConfigDiscovery", () => {
     );
   });
 
-  it("discovers home MCP servers after vault configs and preserves vault priority", async () => {
+  it("discovers home MCP servers from mcp-config.json before other home configs", async () => {
     mockApp._addFile(
       ".copilot/mcp.json",
       JSON.stringify({
@@ -181,9 +188,27 @@ describe("ConfigDiscovery", () => {
 
     const homeRoot = os.homedir() || "/Users/tester";
     mockHomeFiles({
+      [path.join(homeRoot, ".copilot", "mcp-config.json")]: JSON.stringify({
+        mcpServers: {
+          shared: { type: "http", url: "https://home-should-not-win.example.com" },
+          homePreferred: {
+            type: "local",
+            command: "npx",
+            args: ["-y", "server"],
+            env: { TOKEN: "secret" },
+            tools: ["*"],
+          },
+          context7: {
+            type: "http",
+            url: "https://mcp.context7.com/mcp",
+            headers: { CONTEXT7_API_KEY: "secret" },
+            tools: ["query-docs", "resolve-library-id"],
+          },
+        },
+      }),
       [path.join(homeRoot, ".copilot", "mcp.json")]: JSON.stringify({
         servers: {
-          shared: { type: "http", url: "https://home-should-not-win.example.com" },
+          homePreferred: { type: "http", url: "https://wrong.example.com" },
           homeStandard: { type: "http", url: "https://home-standard.example.com" },
         },
       }),
@@ -213,6 +238,8 @@ describe("ConfigDiscovery", () => {
         command: undefined,
         args: undefined,
         env: undefined,
+        headers: undefined,
+        configTools: undefined,
         enabled: true,
         source: "vault",
       },
@@ -223,8 +250,34 @@ describe("ConfigDiscovery", () => {
         command: undefined,
         args: undefined,
         env: undefined,
+        headers: undefined,
+        configTools: undefined,
         enabled: true,
         source: "vault",
+      },
+      {
+        name: "homePreferred",
+        type: "stdio",
+        url: undefined,
+        command: "npx",
+        args: ["-y", "server"],
+        env: { TOKEN: "secret" },
+        headers: undefined,
+        configTools: ["*"],
+        enabled: true,
+        source: "home",
+      },
+      {
+        name: "context7",
+        type: "http",
+        url: "https://mcp.context7.com/mcp",
+        command: undefined,
+        args: undefined,
+        env: undefined,
+        headers: { CONTEXT7_API_KEY: "secret" },
+        configTools: ["query-docs", "resolve-library-id"],
+        enabled: true,
+        source: "home",
       },
       {
         name: "homeStandard",
@@ -233,6 +286,8 @@ describe("ConfigDiscovery", () => {
         command: undefined,
         args: undefined,
         env: undefined,
+        headers: undefined,
+        configTools: undefined,
         enabled: true,
         source: "home",
       },
@@ -243,6 +298,8 @@ describe("ConfigDiscovery", () => {
         command: "node",
         args: ["config.js"],
         env: undefined,
+        headers: undefined,
+        configTools: undefined,
         enabled: true,
         source: "home",
       },
@@ -253,6 +310,8 @@ describe("ConfigDiscovery", () => {
         command: undefined,
         args: undefined,
         env: undefined,
+        headers: undefined,
+        configTools: undefined,
         enabled: true,
         source: "home",
       },
@@ -262,7 +321,7 @@ describe("ConfigDiscovery", () => {
   it("warns and skips invalid home MCP config files", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const homeRoot = os.homedir() || "/Users/tester";
-    const invalidPath = path.join(homeRoot, ".copilot", "mcp.json");
+    const invalidPath = path.join(homeRoot, ".copilot", "mcp-config.json");
 
     mockHomeFiles({
       [invalidPath]: "{invalid json",
@@ -284,6 +343,8 @@ describe("ConfigDiscovery", () => {
         command: undefined,
         args: undefined,
         env: undefined,
+        headers: undefined,
+        configTools: undefined,
         enabled: true,
         source: "home",
       },
