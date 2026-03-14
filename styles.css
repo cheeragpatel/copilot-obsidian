@@ -69,6 +69,17 @@
   align-items: center;
 }
 
+.copilot-char-count {
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 8px 4px;
+}
+
+.copilot-char-count.warning {
+  color: var(--text-error);
+}
+
 /* ── Mode Selector (dropdown) ── */
 .copilot-mode-selector {
   display: inline-flex;
@@ -223,6 +234,15 @@
   gap: 4px;
 }
 
+.copilot-system-message {
+  align-self: center;
+  padding: 2px 0;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .copilot-message-header {
   display: flex;
   align-items: center;
@@ -250,8 +270,13 @@
   font-size: 0.85rem;
 }
 
-.copilot-message-copy-btn {
+.copilot-message-actions {
   margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.copilot-message-copy-btn {
   background: none;
   border: none;
   color: var(--text-muted);
@@ -412,8 +437,73 @@
 
 .copilot-chat-input-wrapper {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.copilot-chat-input-row {
+  display: flex;
   gap: 6px;
   align-items: flex-end;
+}
+
+.copilot-chat-file-input {
+  display: none;
+}
+
+.copilot-attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.copilot-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--text-normal);
+}
+
+.copilot-attachment-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copilot-attachment-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.copilot-attachment-chip-remove:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.copilot-drag-active {
+  border-color: var(--interactive-accent);
+  background: var(--background-secondary);
 }
 
 .copilot-chat-textarea {
@@ -475,6 +565,32 @@
   cursor: pointer;
   font-size: 0.85rem;
   min-height: 40px;
+}
+
+.copilot-attach-btn {
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.copilot-attach-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.copilot-attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── Button Group ── */

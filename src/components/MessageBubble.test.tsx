@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as Obsidian from "obsidian";
 import type { ChatMessage } from "../types/chat";
+import { renderWithContext } from "./testUtils";
 import { MessageBubble } from "./MessageBubble";
 
 function createMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
@@ -15,15 +17,15 @@ function createMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
 }
 
 describe("MessageBubble", () => {
-  it('renders a user message with the "You" label', () => {
+  it('renders a user message with the "You" label using markdown rendering', () => {
     render(
       <MessageBubble
-        message={createMessage({ role: "user", content: "My note summary" })}
+        message={createMessage({ role: "user", content: "**My** note summary" })}
       />,
     );
 
     expect(screen.getByText("You")).toBeInTheDocument();
-    expect(screen.getByText("My note summary")).toBeInTheDocument();
+    expect(screen.getByTestId("markdown")).toHaveTextContent("**My** note summary");
   });
 
   it('renders an assistant message with the "Copilot" label and markdown content', () => {
@@ -46,6 +48,46 @@ describe("MessageBubble", () => {
 
     expect(writeText).toHaveBeenCalledWith("Copy me");
     expect(screen.getByTitle("Copied!")).toHaveTextContent("✓");
+  });
+
+  it("inserts assistant content into the active note", async () => {
+    const user = userEvent.setup();
+    const replaceSelection = vi.fn();
+
+    renderWithContext(<MessageBubble message={createMessage({ content: "Insert me" })} />, {
+      app: {
+        workspace: {
+          getActiveFile: vi.fn().mockReturnValue({ path: "Note.md" }),
+          activeEditor: {
+            editor: {
+              replaceSelection,
+            },
+          },
+        },
+      },
+    });
+
+    await user.click(screen.getByTitle("Insert into note"));
+
+    expect(replaceSelection).toHaveBeenCalledWith("Insert me");
+  });
+
+  it("shows a notice when there is no active note to insert into", async () => {
+    const user = userEvent.setup();
+    const noticeSpy = vi.spyOn(Obsidian, "Notice");
+
+    renderWithContext(<MessageBubble message={createMessage({ content: "Insert me" })} />, {
+      app: {
+        workspace: {
+          getActiveFile: vi.fn().mockReturnValue(null),
+          activeEditor: undefined,
+        },
+      },
+    });
+
+    await user.click(screen.getByTitle("Insert into note"));
+
+    expect(noticeSpy).toHaveBeenCalledWith("Open a note first");
   });
 
   it("does not render markdown when the content is empty", () => {
@@ -96,4 +138,5 @@ describe("MessageBubble", () => {
     expect(screen.getByText("@writer")).toBeInTheDocument();
     expect(screen.queryByText("Copilot")).not.toBeInTheDocument();
   });
+
 });

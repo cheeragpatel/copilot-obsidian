@@ -7,7 +7,7 @@ vi.mock("../tools/vaultTools", () => ({
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useChatStore } from "../store/chatStore";
-import type { ChatMessage } from "../types/chat";
+import type { ChatMessage, ConversationMeta } from "../types/chat";
 import { ChatMode } from "../types/constants";
 import { CopilotChatPanel } from "./CopilotChatPanel";
 import { mockService, renderWithContext } from "./testUtils";
@@ -85,11 +85,56 @@ describe("CopilotChatPanel", () => {
     });
   });
 
-  it("switches modes and updates the store", async () => {
+  it("passes attachments through handleSend", async () => {
     const user = userEvent.setup();
+    const file = new File(["# note"], "test.md", { type: "text/markdown" });
+    Object.defineProperty(file, "path", { value: "/vault/Notes/test.md" });
+
+    const view = await renderPanel({
+      app: {
+        vault: {
+          adapter: {
+            getBasePath: vi.fn().mockReturnValue("/vault"),
+          },
+          getAbstractFileByPath: vi.fn((path: string) =>
+            path === "Notes/test.md" ? { path: "Notes/test.md", name: "test.md" } : null,
+          ),
+        },
+      },
+    });
+
+    await user.type(screen.getByRole("textbox"), "Review this file");
+    const input = view.container.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(input, file);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(mockService.sendMessage).toHaveBeenCalledWith("Review this file", [
+        { path: "Notes/test.md", name: "test.md", type: "text/markdown" },
+      ]);
+    });
+
+    expect(useChatStore.getState().messages[0]).toMatchObject({
+      role: "user",
+      attachments: [{ path: "Notes/test.md", name: "test.md", type: "text/markdown" }],
+    });
+  });
+
+  it("switches modes, preserves messages, and appends a system notice", async () => {
+    const user = userEvent.setup();
+    useChatStore.setState({
+      messages: [
+        {
+          id: "message-1",
+          role: "user",
+          content: "Keep me",
+          timestamp: 1,
+          isStreaming: false,
+        },
+      ],
+    });
 
     await renderPanel();
-    // Mode selector is now a dropdown inside ChatInput area
     const modeSelect = screen.getByRole("option", { name: "Agent" }).closest("select")!;
     await user.selectOptions(modeSelect, ChatMode.Agent);
 
@@ -98,6 +143,81 @@ describe("CopilotChatPanel", () => {
     });
 
     expect(useChatStore.getState().currentMode).toBe(ChatMode.Agent);
+    expect(useChatStore.getState().messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: "Keep me" }),
+        expect.objectContaining({ role: "system", content: "Switched to agent mode" }),
+      ]),
+    );
+    expect(screen.getByText("Switched to agent mode")).toBeInTheDocument();
+  });
+
+  it("loads conversation history and resumes a selected session", async () => {
+    const user = userEvent.setup();
+    const sessions = [
+      {
+        sessionId: "session-2",
+        summary: "Older thread",
+        model: "gpt-4.1",
+        messageCount: 2,
+        modifiedTime: new Date("2024-01-01T00:00:00Z"),
+      },
+      {
+        sessionId: "session-1",
+        summary: "Recent thread",
+        model: "gpt-4o",
+        messageCount: 4,
+        modifiedTime: new Date("2024-01-02T00:00:00Z"),
+      },
+    ];
+    mockService.listSessions.mockResolvedValueOnce(sessions);
+    mockService.getSessionId.mockReturnValue("resumed-session");
+    useChatStore.setState({
+      messages: [
+        {
+          id: "message-1",
+          role: "user",
+          content: "Current thread",
+          timestamp: 1,
+          isStreaming: false,
+        },
+      ],
+    });
+
+    await renderPanel();
+    await user.click(screen.getByTitle("Conversation history"));
+
+    await waitFor(() => {
+      expect(mockService.listSessions).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByText("Recent thread")).toBeInTheDocument();
+    expect(useChatStore.getState().conversations).toEqual([
+      {
+        sessionId: "session-1",
+        title: "Recent thread",
+        model: "gpt-4o",
+        messageCount: 4,
+        lastUpdated: new Date("2024-01-02T00:00:00Z").getTime(),
+      },
+      {
+        sessionId: "session-2",
+        title: "Older thread",
+        model: "gpt-4.1",
+        messageCount: 2,
+        lastUpdated: new Date("2024-01-01T00:00:00Z").getTime(),
+      },
+    ] satisfies ConversationMeta[]);
+
+    await user.click(screen.getByText("Recent thread"));
+
+    await waitFor(() => {
+      expect(mockService.resumeSession).toHaveBeenCalledWith("session-1");
+    });
+    expect(useChatStore.getState().currentSessionId).toBe("resumed-session");
+    expect(useChatStore.getState().messages).toEqual([]);
+    await waitFor(() => {
+      expect(screen.queryByText("Conversations")).not.toBeInTheDocument();
+    });
   });
 
   it("calls abort from the stop button and resets loading state", async () => {

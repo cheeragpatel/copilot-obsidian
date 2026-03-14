@@ -2,7 +2,7 @@ import { CopilotClient, defineTool, SessionEvent } from "@github/copilot-sdk";
 import type { App } from "obsidian";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
 import type { PluginSettings } from "../types/settings";
-import type { ToolCallInfo } from "../types/chat";
+import type { FileAttachment } from "../types/chat";
 import { ConfigDiscovery } from "./ConfigDiscovery";
 import { promptPermission } from "../views/PermissionModal";
 
@@ -236,7 +236,7 @@ export class CopilotService {
     });
   }
 
-  async sendMessage(prompt: string, attachments?: { path: string; displayName: string }[]): Promise<void> {
+  async sendMessage(prompt: string, attachments?: FileAttachment[]): Promise<void> {
     if (!this.session) {
       throw new Error("No active session. Call createSession() first.");
     }
@@ -247,7 +247,7 @@ export class CopilotService {
       messageOptions.attachments = attachments.map((a) => ({
         type: "file" as const,
         path: a.path,
-        displayName: a.displayName,
+        displayName: a.name,
       }));
     }
 

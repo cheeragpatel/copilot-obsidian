@@ -361,7 +361,7 @@ describe("CopilotService", () => {
     await service.initialize();
     await service.createSession();
     await service.sendMessage("Review this file", [
-      { path: "Notes/test.md", displayName: "test.md" },
+      { path: "Notes/test.md", name: "test.md", type: "text/markdown" },
     ]);
 
     expect(mockSession.send).toHaveBeenCalledWith({

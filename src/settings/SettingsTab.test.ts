@@ -7,6 +7,7 @@ vi.mock("obsidian");
 type TrackingSetting = {
   name?: string;
   desc?: string;
+  settingEl: HTMLElement;
   textControl?: any;
   textAreaControl?: any;
   toggleControl?: any;
@@ -219,6 +220,16 @@ describe("CopilotSettingsTab", () => {
     return matching.at(-1)!;
   }
 
+  function getSettingContaining(text: string) {
+    const matching = settingInstances.filter((setting) => setting.name?.includes(text));
+    expect(matching.length).toBeGreaterThan(0);
+    return matching.at(-1)!;
+  }
+
+  function clickSetting(setting: TrackingSetting) {
+    setting.settingEl.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  }
+
   function renderTab(settingsOverrides: any = {}) {
     const plugin = createMockPlugin(settingsOverrides);
     const tab = new CopilotSettingsTab(plugin.app as any, plugin);
@@ -307,7 +318,7 @@ describe("CopilotSettingsTab", () => {
     expect(getSetting("Log level").dropdownControl.value).toBe("warn");
   });
 
-  it("display() with MCP servers renders existing server entries with toggle and delete", () => {
+  it("display() shows MCP servers as collapsed expandable rows", () => {
     const plugin = createMockPlugin({
       mcpServers: [
         {
@@ -322,15 +333,14 @@ describe("CopilotSettingsTab", () => {
 
     tab.display();
 
-    const serverSetting = getSetting("Server: filesystem");
-    expect(tab.containerEl.createDiv).toHaveBeenCalledTimes(1);
-    expect(serverSetting.desc).toBe("Type: http | https://example.com/mcp");
-    expect(serverSetting.toggleControl.value).toBe(true);
-    expect(serverSetting.extraButtonControl.icon).toBe("trash");
-    expect(serverSetting.extraButtonControl.tooltip).toBe("Remove");
+    const serverSetting = getSettingContaining("filesystem");
+    expect(serverSetting.name).toBe("▶ filesystem");
+    expect(serverSetting.desc).toBe("https://example.com/mcp");
+    expect(serverSetting.toggleControl).toBeUndefined();
+    expect(serverSetting.buttonControl).toBeUndefined();
   });
 
-  it("display() with custom agents renders existing agent entries with toggle and delete", () => {
+  it("display() shows custom agents as collapsed expandable rows", () => {
     const plugin = createMockPlugin({
       customAgents: [
         {
@@ -346,11 +356,11 @@ describe("CopilotSettingsTab", () => {
 
     tab.display();
 
-    const agentSetting = getSetting("@summarizer");
+    const agentSetting = getSettingContaining("@summarizer");
+    expect(agentSetting.name).toBe("▶ @summarizer");
     expect(agentSetting.desc).toBe("Summarizes notes");
-    expect(agentSetting.toggleControl.value).toBe(false);
-    expect(agentSetting.extraButtonControl.icon).toBe("trash");
-    expect(agentSetting.extraButtonControl.tooltip).toBe("Remove");
+    expect(agentSetting.toggleControl).toBeUndefined();
+    expect(agentSetting.buttonControl).toBeUndefined();
   });
 
   it("updates general settings when control callbacks fire", async () => {
@@ -407,33 +417,55 @@ describe("CopilotSettingsTab", () => {
     expect(plugin.saveSettings).toHaveBeenCalledTimes(5);
   });
 
-  it("updates and removes MCP servers when control callbacks fire", async () => {
+  it("expands, edits, toggles, and removes MCP servers", async () => {
     const { plugin, tab } = renderTab({
       mcpServers: [
         {
           name: "filesystem",
           type: "stdio",
-          command: "npx @modelcontextprotocol/server-filesystem /vault",
+          command: "npx @modelcontextprotocol/server-filesystem",
+          args: ["/vault"],
           enabled: true,
         },
       ],
     });
     const displaySpy = vi.spyOn(tab, "display");
-    const serverSetting = getSetting("Server: filesystem");
 
-    expect(serverSetting.desc).toBe("Type: stdio | npx @modelcontextprotocol/server-filesystem /vault");
+    clickSetting(getSettingContaining("filesystem"));
 
-    await serverSetting.toggleControl.changeHandler(false);
-    expect(plugin.settings.mcpServers[0].enabled).toBe(false);
-    expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
-
-    await serverSetting.extraButtonControl.click();
-    expect(plugin.settings.mcpServers).toEqual([]);
-    expect(plugin.saveSettings).toHaveBeenCalledTimes(2);
     expect(displaySpy).toHaveBeenCalledTimes(1);
+    expect(getSettingContaining("filesystem").name).toBe("▼ filesystem");
+    expect(getSetting("Type").dropdownControl.value).toBe("stdio");
+    expect(getSetting("Command").textControl.value).toBe("npx @modelcontextprotocol/server-filesystem");
+    expect(getSetting("Args").textControl.value).toBe("/vault");
+
+    await getSetting("Name").textControl.changeHandler("docs");
+    await getSetting("Args").textControl.changeHandler('--path "/My Vault"');
+    expect(plugin.settings.mcpServers[0].name).toBe("docs");
+    expect(plugin.settings.mcpServers[0].args).toEqual(["--path", "/My Vault"]);
+    expect(getSettingContaining("docs").desc).toBe("npx @modelcontextprotocol/server-filesystem --path \"/My Vault\"");
+
+    await getSetting("Type").dropdownControl.changeHandler("http");
+    expect(plugin.settings.mcpServers[0].type).toBe("http");
+    expect(getSetting("URL").textControl.value).toBe("https://");
+
+    await getSetting("URL").textControl.changeHandler("https://example.com/mcp");
+    await getSetting("Enabled").toggleControl.changeHandler(false);
+    expect(plugin.settings.mcpServers[0]).toMatchObject({
+      name: "docs",
+      type: "http",
+      url: "https://example.com/mcp",
+      enabled: false,
+    });
+    expect(getSettingContaining("docs").desc).toBe("https://example.com/mcp");
+
+    await getSetting("Delete").buttonControl.click();
+    expect(plugin.settings.mcpServers).toEqual([]);
+    expect(plugin.saveSettings).toHaveBeenCalledTimes(6);
+    expect(displaySpy).toHaveBeenCalledTimes(3);
   });
 
-  it("updates and removes custom agents when control callbacks fire", async () => {
+  it("expands, edits, toggles, and removes custom agents", async () => {
     const { plugin, tab } = renderTab({
       customAgents: [
         {
@@ -446,21 +478,36 @@ describe("CopilotSettingsTab", () => {
       ],
     });
     const displaySpy = vi.spyOn(tab, "display");
-    const agentSetting = getSetting("@summarizer");
 
-    expect(agentSetting.desc).toBe("Summarizer");
+    clickSetting(getSettingContaining("@summarizer"));
 
-    await agentSetting.toggleControl.changeHandler(true);
-    expect(plugin.settings.customAgents[0].enabled).toBe(true);
-    expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
-
-    await agentSetting.extraButtonControl.click();
-    expect(plugin.settings.customAgents).toEqual([]);
-    expect(plugin.saveSettings).toHaveBeenCalledTimes(2);
     expect(displaySpy).toHaveBeenCalledTimes(1);
+    expect(getSettingContaining("@summarizer").name).toBe("▼ @summarizer");
+    expect(getSetting("Display Name").textControl.value).toBe("Summarizer");
+    expect(getSetting("Prompt/Instructions").textAreaControl.value).toBe("Summarize the note.");
+
+    await getSetting("Name").textControl.changeHandler("researcher");
+    await getSetting("Display Name").textControl.changeHandler("Research Agent");
+    await getSetting("Description").textAreaControl.changeHandler("Investigates vault context");
+    await getSetting("Prompt/Instructions").textAreaControl.changeHandler("Gather facts before answering.");
+    await getSetting("Enabled").toggleControl.changeHandler(true);
+
+    expect(plugin.settings.customAgents[0]).toEqual({
+      name: "researcher",
+      displayName: "Research Agent",
+      description: "Investigates vault context",
+      prompt: "Gather facts before answering.",
+      enabled: true,
+    });
+    expect(getSettingContaining("@researcher").desc).toBe("Investigates vault context");
+
+    await getSetting("Delete").buttonControl.click();
+    expect(plugin.settings.customAgents).toEqual([]);
+    expect(plugin.saveSettings).toHaveBeenCalledTimes(6);
+    expect(displaySpy).toHaveBeenCalledTimes(2);
   });
 
-  it("display() rerenders on add MCP server", async () => {
+  it("display() rerenders on add MCP server and expands the new entry", async () => {
     const plugin = createMockPlugin({ mcpServers: [] });
     const tab = new CopilotSettingsTab(plugin.app as any, plugin);
     const displaySpy = vi.spyOn(tab, "display");
@@ -480,10 +527,14 @@ describe("CopilotSettingsTab", () => {
     ]);
     expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
     expect(displaySpy).toHaveBeenCalledTimes(1);
-    expect(getSetting("Server: new-server").toggleControl.value).toBe(true);
+    expect(getSettingContaining("new-server").name).toBe("▼ new-server");
+    expect(getSetting("Type").dropdownControl.value).toBe("http");
+    expect(getSetting("URL").textControl.value).toBe("https://");
+    expect(getSetting("Enabled").toggleControl.value).toBe(true);
+    expect(getSetting("Delete").buttonControl.text).toBe("Delete");
   });
 
-  it("display() rerenders on add custom agent", async () => {
+  it("display() rerenders on add custom agent and expands the new entry", async () => {
     const plugin = createMockPlugin({ customAgents: [] });
     const tab = new CopilotSettingsTab(plugin.app as any, plugin);
     const displaySpy = vi.spyOn(tab, "display");
@@ -504,6 +555,11 @@ describe("CopilotSettingsTab", () => {
     ]);
     expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
     expect(displaySpy).toHaveBeenCalledTimes(1);
-    expect(getSetting("@my-agent").toggleControl.value).toBe(true);
+    expect(getSettingContaining("@my-agent").name).toBe("▼ @my-agent");
+    expect(getSetting("Display Name").textControl.value).toBe("My Agent");
+    expect(getSetting("Description").textAreaControl.value).toBe("A custom agent");
+    expect(getSetting("Prompt/Instructions").textAreaControl.value).toBe("You are a helpful assistant.");
+    expect(getSetting("Enabled").toggleControl.value).toBe(true);
+    expect(getSetting("Delete").buttonControl.text).toBe("Delete");
   });
 });

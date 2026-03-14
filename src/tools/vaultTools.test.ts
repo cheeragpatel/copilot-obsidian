@@ -78,30 +78,86 @@ describe("createVaultTools", () => {
   });
 
   describe("search_vault", () => {
-    it("returns matching files with snippets", async () => {
-      const alpha = new TFile("alpha.md");
-      const beta = new TFile("beta.md");
+    it("prioritizes path matches, then metadata matches, then content matches", async () => {
+      const pathMatch = new TFile("copilot-guide.md");
+      const metadataMatch = new TFile("notes/guide.md");
+      const contentMatch = new TFile("notes/content.md");
+      const ignored = new TFile("notes/other.md");
       const contents: Record<string, string> = {
-        "alpha.md": "This note mentions Obsidian vault tools in the middle of the file.",
-        "beta.md": "Nothing to see here.",
+        "copilot-guide.md": "Path match body",
+        "notes/guide.md": "Heading match body",
+        "notes/content.md": "This note finds copilot inside the content body.",
+        "notes/other.md": "Nothing relevant here.",
       };
 
-      mockApp.vault.getMarkdownFiles.mockReturnValue([alpha, beta]);
+      mockApp.vault.getMarkdownFiles.mockReturnValue([pathMatch, metadataMatch, contentMatch, ignored]);
+      mockApp.metadataCache.getFileCache.mockImplementation((file: InstanceType<typeof TFile>) => {
+        if (file.path === "notes/guide.md") {
+          return { headings: [{ level: 1, heading: "Copilot heading" }] };
+        }
+
+        return null;
+      });
       mockApp.vault.cachedRead.mockImplementation(
         async (file: InstanceType<typeof TFile>) => contents[file.path],
       );
 
       const searchVault = getTool("search_vault");
-      const result = await searchVault.handler({ query: "vault tools" });
+      const result = await searchVault.handler({ query: "copilot", limit: 3 });
 
-      expect(result.query).toBe("vault tools");
-      expect(result.resultCount).toBe(1);
-      expect(result.results).toEqual([
-        {
-          path: "alpha.md",
-          snippet: expect.stringContaining("vault tools"),
-        },
+      expect(result.query).toBe("copilot");
+      expect(result.resultCount).toBe(3);
+      expect(result.results.map((entry: any) => entry.path)).toEqual([
+        "copilot-guide.md",
+        "notes/guide.md",
+        "notes/content.md",
       ]);
+      expect(result.results.map((entry: any) => entry.matchType)).toEqual(["path", "metadata", "content"]);
+      expect(result.results[0].snippet).toBe("Path match body");
+      expect(result.results[1].snippet).toBe("Heading match body");
+      expect(result.results[2].snippet).toContain("copilot");
+    });
+
+    it("matches headings, tags, and frontmatter case-insensitively", async () => {
+      const headingFile = new TFile("heading.md");
+      const tagFile = new TFile("tag.md");
+      const frontmatterFile = new TFile("frontmatter.md");
+      const contents: Record<string, string> = {
+        "heading.md": "Heading body",
+        "tag.md": "Tag body",
+        "frontmatter.md": "Frontmatter body",
+      };
+
+      mockApp.vault.getMarkdownFiles.mockReturnValue([headingFile, tagFile, frontmatterFile]);
+      mockApp.metadataCache.getFileCache.mockImplementation((file: InstanceType<typeof TFile>) => {
+        if (file.path === "heading.md") {
+          return { headings: [{ level: 1, heading: "COPILOT heading" }] };
+        }
+
+        if (file.path === "tag.md") {
+          return { tags: [{ tag: "#Copilot" }] };
+        }
+
+        if (file.path === "frontmatter.md") {
+          return { frontmatter: { title: "Copilot Frontmatter" } };
+        }
+
+        return null;
+      });
+      mockApp.vault.cachedRead.mockImplementation(
+        async (file: InstanceType<typeof TFile>) => contents[file.path],
+      );
+
+      const searchVault = getTool("search_vault");
+      const result = await searchVault.handler({ query: "copilot" });
+
+      expect(result.resultCount).toBe(3);
+      expect(result.results.map((entry: any) => entry.path)).toEqual([
+        "heading.md",
+        "tag.md",
+        "frontmatter.md",
+      ]);
+      expect(result.results.every((entry: any) => entry.matchType === "metadata")).toBe(true);
     });
 
     it("returns empty results for no matches", async () => {
@@ -115,29 +171,38 @@ describe("createVaultTools", () => {
       expect(result).toEqual({ query: "missing", resultCount: 0, results: [] });
     });
 
-    it("respects the limit parameter", async () => {
-      const first = new TFile("first.md");
-      const second = new TFile("second.md");
-      const third = new TFile("third.md");
-      const contents: Record<string, string> = {
-        "first.md": "query appears in the first note",
-        "second.md": "another query appears in the second note",
-        "third.md": "yet another query appears in the third note",
-      };
+    it("respects the limit and stops reading unmatched files once fast matches fill it", async () => {
+      const pathMatch = new TFile("copilot-path.md");
+      const metadataMatch = new TFile("metadata.md");
+      const contentMatch = new TFile("content.md");
 
-      mockApp.vault.getMarkdownFiles.mockReturnValue([first, second, third]);
-      mockApp.vault.cachedRead.mockImplementation(
-        async (file: InstanceType<typeof TFile>) => contents[file.path],
-      );
+      mockApp.vault.getMarkdownFiles.mockReturnValue([pathMatch, metadataMatch, contentMatch]);
+      mockApp.metadataCache.getFileCache.mockImplementation((file: InstanceType<typeof TFile>) => {
+        if (file.path === "metadata.md") {
+          return { tags: [{ tag: "#copilot" }] };
+        }
+
+        return null;
+      });
+      mockApp.vault.cachedRead.mockImplementation(async (file: InstanceType<typeof TFile>) => {
+        if (file.path === "content.md") {
+          throw new Error("content match should not be read once limit is reached");
+        }
+
+        return `${file.path} body`;
+      });
 
       const searchVault = getTool("search_vault");
-      const result = await searchVault.handler({ query: "query", limit: 2 });
+      const result = await searchVault.handler({ query: "copilot", limit: 2 });
 
       expect(result.resultCount).toBe(2);
-      expect(result.results.map((entry: any) => entry.path)).toEqual(["first.md", "second.md"]);
+      expect(result.results.map((entry: any) => entry.path)).toEqual(["copilot-path.md", "metadata.md"]);
+      expect(result.results.map((entry: any) => entry.matchType)).toEqual(["path", "metadata"]);
+      expect(mockApp.vault.cachedRead).toHaveBeenCalledTimes(2);
+      expect(mockApp.vault.cachedRead).not.toHaveBeenCalledWith(contentMatch);
     });
 
-    it("searches case-insensitively", async () => {
+    it("searches content case-insensitively", async () => {
       const file = new TFile("case.md");
       mockApp.vault.getMarkdownFiles.mockReturnValue([file]);
       mockApp.vault.cachedRead.mockResolvedValue("Mixed Case Content with COPILOT inside");
@@ -148,7 +213,8 @@ describe("createVaultTools", () => {
       expect(result.resultCount).toBe(1);
       expect(result.results[0]).toEqual({
         path: "case.md",
-        snippet: expect.stringContaining("COPILOT"),
+        snippet: "COPILOT inside",
+        matchType: "content",
       });
     });
   });

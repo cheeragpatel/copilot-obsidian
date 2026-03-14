@@ -7,10 +7,12 @@ import { createVaultTools } from "../tools/vaultTools";
 import { SlashCommandRegistry } from "../commands/SlashCommandRegistry";
 import { ConfigDiscovery } from "../services/ConfigDiscovery";
 import { ChatHeader } from "./ChatHeader";
+import { ConversationHistory } from "./ConversationHistory";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { EmptyState } from "./EmptyState";
 import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
+import type { ConversationMeta, FileAttachment } from "../types/chat";
 import type { CustomAgentEntry } from "../types/settings";
 
 /** Map raw SDK/CLI errors to user-friendly messages */
@@ -28,6 +30,28 @@ function friendlyError(message: string): string {
   return message;
 }
 
+function getSessionTimestamp(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? Date.now() : parsed;
+  }
+  return Date.now();
+}
+
+function toConversationMeta(session: any, fallbackModel: string): ConversationMeta {
+  return {
+    sessionId: session.sessionId,
+    title: session.summary || session.title || session.context?.title || "Untitled conversation",
+    model: session.model || session.context?.model || fallbackModel,
+    messageCount: Number(session.messageCount ?? session.context?.messageCount ?? 0),
+    lastUpdated: getSessionTimestamp(
+      session.lastUpdated ?? session.modifiedTime ?? session.updatedAt ?? session.startTime,
+    ),
+  };
+}
+
 export const CopilotChatPanel: React.FC = () => {
   const ctx = useContext(PluginContext);
   const initialized = useRef(false);
@@ -35,7 +59,9 @@ export const CopilotChatPanel: React.FC = () => {
   const commandRegistry = useRef(new SlashCommandRegistry());
   const lastUserPrompt = useRef<string | null>(null);
   const lastUserDisplay = useRef<string | null>(null);
+  const lastUserAttachments = useRef<FileAttachment[] | undefined>(undefined);
   const [initState, setInitState] = useState<"loading" | "ready" | "error">("loading");
+  const [showHistory, setShowHistory] = useState(false);
   const {
     messages,
     currentMode,
@@ -43,6 +69,7 @@ export const CopilotChatPanel: React.FC = () => {
     isLoading,
     error,
     selectedAgent,
+    conversations,
     addMessage,
     appendToLastAssistantMessage,
     setLastMessageStreaming,
@@ -52,13 +79,14 @@ export const CopilotChatPanel: React.FC = () => {
     setLoading,
     setError,
     setSessionId,
-    clearMessages,
+    setConversations,
     setMode,
     setModel,
     setAvailableModels,
     setDiscoveredAgents,
     addCustomAgent,
     newConversation,
+    clearMessages,
     setAgent,
     discoveredAgents,
   } = useChatStore();
@@ -160,9 +188,47 @@ export const CopilotChatPanel: React.FC = () => {
     return () => unsubscribe();
   }, [ctx]);
 
+  useEffect(() => {
+    if (!ctx || !showHistory) return;
+
+    let cancelled = false;
+
+    const loadConversations = async () => {
+      if (initPromise.current) {
+        await initPromise.current;
+      }
+
+      try {
+        const sessions = await ctx.copilotService.listSessions();
+        if (cancelled) return;
+
+        const nextConversations = sessions
+          .filter((session: any) => session?.sessionId)
+          .map((session: any) => toConversationMeta(session, currentModel))
+          .sort(
+            (a: ConversationMeta, b: ConversationMeta) => b.lastUpdated - a.lastUpdated,
+          );
+
+        setConversations(nextConversations);
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(friendlyError(err.message));
+        }
+      }
+    };
+
+    void loadConversations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx, showHistory, currentModel, setConversations, setError]);
+
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, attachments?: FileAttachment[]) => {
       if (!ctx || !text.trim()) return;
+
+      const messageAttachments = attachments && attachments.length > 0 ? attachments : undefined;
 
       // Wait for initialization to complete before sending
       if (initPromise.current) {
@@ -217,6 +283,7 @@ export const CopilotChatPanel: React.FC = () => {
         content: displayText,
         timestamp: Date.now(),
         isStreaming: false,
+        attachments: messageAttachments,
       });
 
       addMessage({
@@ -232,9 +299,14 @@ export const CopilotChatPanel: React.FC = () => {
       setError(null);
       lastUserPrompt.current = actualPrompt;
       lastUserDisplay.current = displayText;
+      lastUserAttachments.current = messageAttachments;
 
       try {
-        await ctx.copilotService.sendMessage(actualPrompt);
+        if (messageAttachments) {
+          await ctx.copilotService.sendMessage(actualPrompt, messageAttachments);
+        } else {
+          await ctx.copilotService.sendMessage(actualPrompt);
+        }
       } catch (err: any) {
         setError(friendlyError(err.message));
         setLoading(false);
@@ -268,21 +340,31 @@ export const CopilotChatPanel: React.FC = () => {
     async (mode: ChatMode) => {
       if (!ctx) return;
       if (initPromise.current) await initPromise.current;
-      setMode(mode);
       try {
         const tools = mode === ChatMode.Agent ? createVaultTools(ctx.app) : undefined;
         await ctx.copilotService.switchMode(mode, tools);
+        setMode(mode);
         setSessionId(ctx.copilotService.getSessionId());
+        addMessage({
+          id: generateId(),
+          role: "system",
+          content: `Switched to ${mode} mode`,
+          timestamp: Date.now(),
+          isStreaming: false,
+        });
       } catch (err: any) {
         setError(friendlyError(err.message));
       }
     },
-    [ctx],
+    [ctx, addMessage, setMode, setSessionId, setError],
   );
 
   const handleNewConversation = useCallback(async () => {
     if (!ctx) return;
     if (initPromise.current) await initPromise.current;
+    lastUserPrompt.current = null;
+    lastUserDisplay.current = null;
+    lastUserAttachments.current = undefined;
     newConversation();
     try {
       const tools =
@@ -297,6 +379,34 @@ export const CopilotChatPanel: React.FC = () => {
       setError(friendlyError(err.message));
     }
   }, [ctx, currentMode, currentModel]);
+
+  const handleHistoryClick = useCallback(() => {
+    setShowHistory(true);
+  }, []);
+
+  const handleHistorySelect = useCallback(
+    async (sessionId: string) => {
+      if (!ctx) return;
+      if (initPromise.current) await initPromise.current;
+
+      try {
+        await ctx.copilotService.resumeSession(sessionId);
+        clearMessages();
+        lastUserPrompt.current = null;
+        lastUserDisplay.current = null;
+        lastUserAttachments.current = undefined;
+        setSessionId(ctx.copilotService.getSessionId() ?? sessionId);
+        setShowHistory(false);
+      } catch (err: any) {
+        setError(friendlyError(err.message));
+      }
+    },
+    [ctx, clearMessages, setSessionId, setError],
+  );
+
+  const handleHistoryClose = useCallback(() => {
+    setShowHistory(false);
+  }, []);
 
   const handleAbort = useCallback(async () => {
     if (!ctx) return;
@@ -327,7 +437,11 @@ export const CopilotChatPanel: React.FC = () => {
     setError(null);
 
     try {
-      await ctx.copilotService.sendMessage(prompt);
+      if (lastUserAttachments.current) {
+        await ctx.copilotService.sendMessage(prompt, lastUserAttachments.current);
+      } else {
+        await ctx.copilotService.sendMessage(prompt);
+      }
     } catch (err: any) {
       setError(friendlyError(err.message));
       setLoading(false);
@@ -350,8 +464,16 @@ export const CopilotChatPanel: React.FC = () => {
     <div className="copilot-chat-container">
       <ChatHeader
         onNewConversation={handleNewConversation}
+        onHistoryClick={handleHistoryClick}
         isConnected={initState === "ready"}
       />
+      {showHistory && (
+        <ConversationHistory
+          conversations={conversations}
+          onSelect={handleHistorySelect}
+          onClose={handleHistoryClose}
+        />
+      )}
       {error && (
         <div className="copilot-error-banner">
           <span>{error}</span>

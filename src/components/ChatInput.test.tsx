@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { ChatInput } from "./ChatInput";
@@ -12,10 +12,11 @@ function renderChatInput(overrides: Parameters<typeof renderWithContext>[1] = {}
 }
 
 describe("ChatInput", () => {
-  it("renders the textarea and send button", () => {
+  it("renders the textarea, attach button, and send button", () => {
     renderChatInput();
 
     expect(screen.getByRole("textbox")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Attach files" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
   });
 
@@ -36,6 +37,74 @@ describe("ChatInput", () => {
 
     expect(onSend).toHaveBeenCalledWith("Hello Copilot");
     expect(textarea).toHaveValue("");
+  });
+
+  it("includes attached vault files when sending", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const file = new File(["# test"], "test.md", { type: "text/markdown" });
+    Object.defineProperty(file, "path", { value: "/vault/Notes/test.md" });
+
+    const view = renderWithContext(
+      <ChatInput onSend={onSend} onAbort={vi.fn()} onModeSwitch={vi.fn()} isLoading={false} />,
+      {
+        app: {
+          vault: {
+            adapter: {
+              getBasePath: vi.fn().mockReturnValue("/vault"),
+            },
+            getAbstractFileByPath: vi.fn((path: string) =>
+              path === "Notes/test.md" ? { path: "Notes/test.md", name: "test.md" } : null,
+            ),
+          },
+        },
+      },
+    );
+
+    await user.type(screen.getByRole("textbox"), "Review this");
+    const input = view.container.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(input, file);
+
+    expect(screen.getByText("test.md")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(onSend).toHaveBeenCalledWith("Review this", [
+      { path: "Notes/test.md", name: "test.md", type: "text/markdown" },
+    ]);
+    expect(screen.queryByText("test.md")).not.toBeInTheDocument();
+  });
+
+  it("shows drag feedback and supports dropping vault files", () => {
+    const file = new File(["# dropped"], "drop.md", { type: "text/markdown" });
+    Object.defineProperty(file, "path", { value: "/vault/Notes/drop.md" });
+
+    const view = renderChatInput({
+      app: {
+        vault: {
+          adapter: {
+            getBasePath: vi.fn().mockReturnValue("/vault"),
+          },
+          getAbstractFileByPath: vi.fn((path: string) =>
+            path === "Notes/drop.md" ? { path: "Notes/drop.md", name: "drop.md" } : null,
+          ),
+        },
+      },
+    });
+
+    const wrapper = view.container.querySelector(".copilot-chat-input-wrapper") as HTMLDivElement;
+    const dataTransfer = {
+      types: ["Files"],
+      files: [file],
+      dropEffect: "none",
+    } as unknown as DataTransfer;
+
+    fireEvent.dragOver(wrapper, { dataTransfer });
+    expect(wrapper).toHaveClass("copilot-drag-active");
+
+    fireEvent.drop(wrapper, { dataTransfer });
+    expect(wrapper).not.toHaveClass("copilot-drag-active");
+    expect(screen.getByText("drop.md")).toBeInTheDocument();
   });
 
   it("adds a newline on Shift+Enter without sending", async () => {

@@ -13,6 +13,8 @@ export const mockService = {
   abort: vi.fn().mockResolvedValue(undefined),
   onEvent: vi.fn().mockReturnValue(vi.fn()),
   switchMode: vi.fn().mockResolvedValue(undefined),
+  resumeSession: vi.fn().mockResolvedValue(undefined),
+  listSessions: vi.fn().mockResolvedValue([]),
   getMode: vi.fn().mockReturnValue("ask"),
   getSessionId: vi.fn().mockReturnValue("test-session"),
   isConnected: vi.fn().mockReturnValue(true),

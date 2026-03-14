@@ -1,5 +1,93 @@
 import { defineTool } from "@github/copilot-sdk";
-import type { App, TFile, TFolder } from "obsidian";
+import type { App, CachedMetadata, TFile } from "obsidian";
+
+const DEFAULT_SEARCH_LIMIT = 20;
+const SEARCH_SNIPPET_LENGTH = 200;
+
+type SearchMatchType = "path" | "metadata" | "content";
+
+type SearchCandidate = {
+  file: TFile;
+  matchType: Exclude<SearchMatchType, "content">;
+  fallbackSnippet?: string;
+};
+
+function normalizeSearchLimit(limit?: number): number {
+  if (typeof limit !== "number" || !Number.isFinite(limit) || limit < 1) {
+    return DEFAULT_SEARCH_LIMIT;
+  }
+
+  return Math.floor(limit);
+}
+
+function flattenFrontmatterValue(value: unknown): string[] {
+  if (value == null) {
+    return [];
+  }
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return [String(value)];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => flattenFrontmatterValue(item));
+  }
+
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, nestedValue]) => [
+      key,
+      ...flattenFrontmatterValue(nestedValue),
+    ]);
+  }
+
+  return [];
+}
+
+function findFrontmatterMatch(frontmatter: CachedMetadata["frontmatter"] | undefined, queryLower: string): string | null {
+  if (!frontmatter) {
+    return null;
+  }
+
+  for (const [key, value] of Object.entries(frontmatter)) {
+    const flattenedValue = flattenFrontmatterValue(value);
+    const searchableParts = [key, ...flattenedValue];
+
+    if (searchableParts.some((part) => part.toLowerCase().includes(queryLower))) {
+      return flattenedValue.length > 0 ? `${key}: ${flattenedValue.join(", ")}` : key;
+    }
+  }
+
+  return null;
+}
+
+function findMetadataMatch(cache: CachedMetadata | null, queryLower: string): string | null {
+  const headingMatch = cache?.headings?.find((heading) => heading.heading.toLowerCase().includes(queryLower));
+  if (headingMatch) {
+    return headingMatch.heading;
+  }
+
+  const tagMatch = cache?.tags?.find((tag) => tag.tag.toLowerCase().includes(queryLower));
+  if (tagMatch) {
+    return tagMatch.tag;
+  }
+
+  return findFrontmatterMatch(cache?.frontmatter, queryLower);
+}
+
+function buildContentSnippet(content: string, queryLower: string): string {
+  const matchIndex = content.toLowerCase().indexOf(queryLower);
+  const startIndex = matchIndex >= 0 ? matchIndex : 0;
+  return content.slice(startIndex, startIndex + SEARCH_SNIPPET_LENGTH);
+}
+
+async function readSearchSnippet(app: App, file: TFile, queryLower: string, fallbackSnippet = ""): Promise<string> {
+  try {
+    const content = await app.vault.cachedRead(file);
+    return buildContentSnippet(content, queryLower);
+  } catch {
+    return fallbackSnippet.slice(0, SEARCH_SNIPPET_LENGTH);
+  }
+}
 
 export function createVaultTools(app: App) {
   const readNote = defineTool("read_note", {
@@ -28,39 +116,101 @@ export function createVaultTools(app: App) {
   });
 
   const searchVault = defineTool("search_vault", {
-    description: "Search for notes in the Obsidian vault by text query. Returns matching file paths and snippets.",
+    description: "Search for notes in the Obsidian vault using path, metadata cache, and content matches ranked by relevance.",
     parameters: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Search query text to find in note contents" },
-        limit: { type: "number", description: "Maximum number of results to return (default: 10)" },
+        query: { type: "string", description: "Search query text to find in note paths, metadata, and contents" },
+        limit: { type: "number", description: "Maximum number of results to return (default: 20)" },
       },
       required: ["query"],
     },
     handler: async (args: { query: string; limit?: number }) => {
-      const limit = args.limit || 10;
-      const results: { path: string; snippet: string }[] = [];
+      const query = args.query.trim();
+      if (!query) {
+        return { query, resultCount: 0, results: [] };
+      }
+
+      const limit = normalizeSearchLimit(args.limit);
+      const queryLower = query.toLowerCase();
       const files = app.vault.getMarkdownFiles();
+      const matchedPaths = new Set<string>();
+      const fastMatches: SearchCandidate[] = [];
+      const results: { path: string; snippet: string; matchType: SearchMatchType }[] = [];
 
       for (const file of files) {
-        if (results.length >= limit) break;
-        try {
-          const content = await app.vault.cachedRead(file);
-          const lowerContent = content.toLowerCase();
-          const lowerQuery = args.query.toLowerCase();
-          const index = lowerContent.indexOf(lowerQuery);
-          if (index !== -1) {
-            const start = Math.max(0, index - 50);
-            const end = Math.min(content.length, index + args.query.length + 50);
-            const snippet = (start > 0 ? "..." : "") + content.slice(start, end) + (end < content.length ? "..." : "");
-            results.push({ path: file.path, snippet });
-          }
-        } catch {
-          // Skip files that can't be read
+        if (fastMatches.length >= limit) {
+          break;
+        }
+
+        if (file.path.toLowerCase().includes(queryLower)) {
+          fastMatches.push({ file, matchType: "path" });
+          matchedPaths.add(file.path);
         }
       }
 
-      return { query: args.query, resultCount: results.length, results };
+      if (fastMatches.length < limit) {
+        for (const file of files) {
+          if (fastMatches.length >= limit) {
+            break;
+          }
+
+          if (matchedPaths.has(file.path)) {
+            continue;
+          }
+
+          const metadataSnippet = findMetadataMatch(app.metadataCache.getFileCache(file), queryLower);
+          if (!metadataSnippet) {
+            continue;
+          }
+
+          fastMatches.push({ file, matchType: "metadata", fallbackSnippet: metadataSnippet });
+          matchedPaths.add(file.path);
+        }
+      }
+
+      for (const match of fastMatches) {
+        if (results.length >= limit) {
+          break;
+        }
+
+        const snippet = await readSearchSnippet(app, match.file, queryLower, match.fallbackSnippet);
+        results.push({
+          path: match.file.path,
+          snippet,
+          matchType: match.matchType,
+        });
+      }
+
+      if (results.length < limit) {
+        for (const file of files) {
+          if (results.length >= limit) {
+            break;
+          }
+
+          if (matchedPaths.has(file.path)) {
+            continue;
+          }
+
+          try {
+            const content = await app.vault.cachedRead(file);
+            if (!content.toLowerCase().includes(queryLower)) {
+              continue;
+            }
+
+            matchedPaths.add(file.path);
+            results.push({
+              path: file.path,
+              snippet: buildContentSnippet(content, queryLower),
+              matchType: "content",
+            });
+          } catch {
+            // Skip files that can't be read
+          }
+        }
+      }
+
+      return { query, resultCount: results.length, results };
     },
   });
 

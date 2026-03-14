@@ -72,9 +72,9 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick, isIni
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z" />
-          <path d="M12 16v-4" />
-          <path d="M12 8h.01" />
+          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z" />
+          <path d="M5 19l1 3 1-3 3-1-3-1-1-3-1 3-3 1 3 1z" />
+          <path d="M19 13l0.75 2.25L22 16l-2.25 0.75L19 19l-0.75-2.25L16 16l2.25-0.75L19 13z" />
         </svg>
       </div>
       <h4 className="copilot-empty-title">GitHub Copilot for Obsidian</h4>

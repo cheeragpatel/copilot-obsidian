@@ -1,11 +1,13 @@
 import * as React from "react";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useContext } from "react";
+import { Notice } from "obsidian";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { ChatMessage } from "../types/chat";
+import { PluginContext } from "../views/CopilotChatView";
 import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
 
 interface MessageBubbleProps {
@@ -33,6 +35,7 @@ const CodeBlockCopyButton: React.FC<{ code: string }> = ({ code }) => {
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const [copied, setCopied] = useState(false);
+  const ctx = useContext(PluginContext);
 
   // Detect Obsidian dark/light theme
   const isDark = useMemo(() => {
@@ -45,6 +48,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [message.content]);
+
+  const handleInsertIntoNote = useCallback(() => {
+    const activeFile = ctx?.app?.workspace.getActiveFile?.();
+    const editor = ctx?.app?.workspace.activeEditor?.editor;
+
+    if (!activeFile || !editor) {
+      new Notice("Open a note first");
+      return;
+    }
+
+    editor.replaceSelection(message.content);
+  }, [ctx, message.content]);
 
   const isUser = message.role === "user";
   const isThinking = !isUser && message.isStreaming && !message.content;
@@ -66,13 +81,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
           <span className="copilot-done-badge">✓</span>
         )}
         {!isUser && message.content && (
-          <button
-            className="copilot-message-copy-btn"
-            onClick={handleCopy}
-            title={copied ? "Copied!" : "Copy message"}
-          >
-            {copied ? "✓" : "📋"}
-          </button>
+          <div className="copilot-message-actions">
+            <button
+              className="copilot-message-copy-btn"
+              onClick={handleInsertIntoNote}
+              title="Insert into note"
+              aria-label="Insert into note"
+            >
+              📝
+            </button>
+            <button
+              className="copilot-message-copy-btn"
+              onClick={handleCopy}
+              title={copied ? "Copied!" : "Copy message"}
+              aria-label={copied ? "Copied!" : "Copy message"}
+            >
+              {copied ? "✓" : "📋"}
+            </button>
+          </div>
         )}
       </div>
 

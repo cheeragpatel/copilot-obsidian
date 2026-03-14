@@ -2,11 +2,13 @@ import * as React from "react";
 
 interface ChatHeaderProps {
   onNewConversation: () => void;
+  onHistoryClick: () => void;
   isConnected?: boolean;
 }
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onNewConversation,
+  onHistoryClick,
   isConnected,
 }) => {
   return (
@@ -19,6 +21,14 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         />
       </div>
       <div className="copilot-chat-header-actions">
+        <button
+          className="copilot-chat-header-btn"
+          onClick={onHistoryClick}
+          title="Conversation history"
+          aria-label="Conversation history"
+        >
+          🕐
+        </button>
         <button
           className="copilot-chat-header-btn"
           onClick={onNewConversation}

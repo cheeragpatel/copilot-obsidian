@@ -18,7 +18,8 @@ export interface ToolCallInfo {
 
 export interface FileAttachment {
   path: string;
-  displayName: string;
+  name: string;
+  type: string;
 }
 
 export interface ConversationMeta {
