@@ -59,7 +59,7 @@ function savePermanentPermission(key: string): void {
  *   - Always Allow — persist approval across sessions (localStorage)
  */
 export class PermissionModal extends Modal {
-  private resolvePromise: (result: ApprovalResult) => void;
+  private resolvePromise: ((result: ApprovalResult) => void) | null;
   private kind: string;
   private details: Record<string, unknown>;
 
@@ -103,7 +103,7 @@ export class PermissionModal extends Modal {
     });
     onceBtn.title = "Allow this single request";
     onceBtn.addEventListener("click", () => {
-      this.resolvePromise({ approved: true, scope: "once" });
+      this.resolve({ approved: true, scope: "once" });
       this.close();
     });
 
@@ -113,7 +113,7 @@ export class PermissionModal extends Modal {
     });
     sessionBtn.title = "Auto-approve matching requests until Obsidian restarts";
     sessionBtn.addEventListener("click", () => {
-      this.resolvePromise({ approved: true, scope: "session" });
+      this.resolve({ approved: true, scope: "session" });
       this.close();
     });
 
@@ -123,7 +123,7 @@ export class PermissionModal extends Modal {
     });
     permanentBtn.title = "Remember this choice permanently";
     permanentBtn.addEventListener("click", () => {
-      this.resolvePromise({ approved: true, scope: "permanent" });
+      this.resolve({ approved: true, scope: "permanent" });
       this.close();
     });
 
@@ -134,13 +134,22 @@ export class PermissionModal extends Modal {
       cls: "copilot-permission-deny-btn",
     });
     denyBtn.addEventListener("click", () => {
-      this.resolvePromise({ approved: false, scope: "once" });
+      this.resolve({ approved: false, scope: "once" });
       this.close();
     });
   }
 
   onClose(): void {
+    // If user closed the modal without clicking a button, treat as deny
+    this.resolve({ approved: false, scope: "once" });
     this.contentEl.empty();
+  }
+
+  private resolve(result: ApprovalResult): void {
+    if (this.resolvePromise) {
+      this.resolvePromise(result);
+      this.resolvePromise = null;
+    }
   }
 
   private formatKind(kind: string): string {

@@ -10,6 +10,25 @@ interface MessageBubbleProps {
   message: ChatMessage;
 }
 
+/** Inline copy button for code blocks */
+const CodeBlockCopyButton: React.FC<{ code: string }> = ({ code }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      className="copilot-code-copy-btn"
+      onClick={handleCopy}
+      title={copied ? "Copied!" : "Copy code"}
+    >
+      {copied ? "✓" : "⧉"}
+    </button>
+  );
+};
+
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   const [copied, setCopied] = useState(false);
 
@@ -68,14 +87,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
               code({ node, className, children, ...props }: any) {
                 const match = /language-(\w+)/.exec(className || "");
                 const inline = !match && !className;
+                const codeStr = String(children).replace(/\n$/, "");
                 return !inline ? (
-                  <SyntaxHighlighter
-                    language={match ? match[1] : "text"}
-                    PreTag="div"
-                    {...props}
-                  >
-                    {String(children).replace(/\n$/, "")}
-                  </SyntaxHighlighter>
+                  <div className="copilot-code-block-wrapper">
+                    <CodeBlockCopyButton code={codeStr} />
+                    <SyntaxHighlighter
+                      language={match ? match[1] : "text"}
+                      PreTag="div"
+                      {...props}
+                    >
+                      {codeStr}
+                    </SyntaxHighlighter>
+                  </div>
                 ) : (
                   <code className={className} {...props}>
                     {children}

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useContext, useEffect, useRef, useCallback } from "react";
+import { useContext, useEffect, useRef, useCallback, useState } from "react";
 import { PluginContext } from "../views/CopilotChatView";
 import { useChatStore, generateId } from "../store/chatStore";
 import { ChatMode } from "../types/constants";
@@ -13,18 +13,36 @@ import { EmptyState } from "./EmptyState";
 import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
 import type { CustomAgentEntry } from "../types/settings";
 
+/** Map raw SDK/CLI errors to user-friendly messages */
+function friendlyError(message: string): string {
+  if (message.includes("ENOENT") || message.includes("not found"))
+    return "Copilot CLI not found. Install it with: npm install -g @github/copilot";
+  if (message.includes("code 127"))
+    return "Node.js not found. Make sure Node.js is installed and in your PATH.";
+  if (message.includes("createSession"))
+    return "Connection lost. Click '+' to start a new conversation.";
+  if (message.includes("ECONNREFUSED"))
+    return "Cannot connect to Copilot server. Check your network connection.";
+  if (message.includes("auth"))
+    return "Not authenticated. Run 'copilot auth login' in your terminal.";
+  return message;
+}
+
 export const CopilotChatPanel: React.FC = () => {
   const ctx = useContext(PluginContext);
   const initialized = useRef(false);
   const initPromise = useRef<Promise<void> | null>(null);
   const commandRegistry = useRef(new SlashCommandRegistry());
   const lastUserPrompt = useRef<string | null>(null);
+  const lastUserDisplay = useRef<string | null>(null);
+  const [initState, setInitState] = useState<"loading" | "ready" | "error">("loading");
   const {
     messages,
     currentMode,
     currentModel,
     isLoading,
     error,
+    selectedAgent,
     addMessage,
     appendToLastAssistantMessage,
     setLastMessageStreaming,
@@ -36,6 +54,7 @@ export const CopilotChatPanel: React.FC = () => {
     setSessionId,
     clearMessages,
     setMode,
+    setModel,
     setAvailableModels,
     setDiscoveredAgents,
     addCustomAgent,
@@ -50,6 +69,7 @@ export const CopilotChatPanel: React.FC = () => {
 
     const initService = async () => {
       try {
+        setInitState("loading");
         await ctx.copilotService.initialize();
 
         // Fetch available models dynamically from the SDK
@@ -83,8 +103,10 @@ export const CopilotChatPanel: React.FC = () => {
           tools,
         });
         setSessionId(ctx.copilotService.getSessionId());
+        setInitState("ready");
       } catch (err: any) {
-        setError(`Failed to initialize Copilot: ${err.message}`);
+        setInitState("error");
+        setError(friendlyError(err.message));
       }
     };
 
@@ -124,7 +146,7 @@ export const CopilotChatPanel: React.FC = () => {
           );
           break;
         case "session.error":
-          setError(event.data?.message || "An error occurred");
+          setError(friendlyError(event.data?.message || "An error occurred"));
           setLoading(false);
           break;
         case "session.idle":
@@ -171,16 +193,17 @@ export const CopilotChatPanel: React.FC = () => {
         }
       }
 
+      let activeAgent = selectedAgent;
       const agentMatch = actualPrompt.match(/@([\w-]+)\s*/);
       if (agentMatch) {
         const agentName = agentMatch[1];
-        // Check settings agents and discovered agents
         const allAgents = [
           ...(ctx.settings.customAgents || []).filter((a: any) => a.enabled),
           ...useChatStore.getState().discoveredAgents,
         ];
         const agent = allAgents.find((a: any) => a.name === agentName);
         if (agent) {
+          activeAgent = agentName;
           setAgent(agentName);
           actualPrompt =
             actualPrompt.replace(/@[\w-]+\s*/, "").trim() || `Hello @${agentName}`;
@@ -202,20 +225,43 @@ export const CopilotChatPanel: React.FC = () => {
         content: "",
         timestamp: Date.now(),
         isStreaming: true,
+        agentName: activeAgent || undefined,
       });
 
       setLoading(true);
       setError(null);
       lastUserPrompt.current = actualPrompt;
+      lastUserDisplay.current = displayText;
 
       try {
         await ctx.copilotService.sendMessage(actualPrompt);
       } catch (err: any) {
-        setError(err.message);
+        setError(friendlyError(err.message));
         setLoading(false);
       }
     },
-    [ctx],
+    [ctx, selectedAgent],
+  );
+
+  const handleModelChange = useCallback(
+    async (model: string) => {
+      if (!ctx) return;
+      setModel(model);
+      if (initPromise.current) await initPromise.current;
+      // Re-create session with new model (keeps messages in UI)
+      try {
+        const tools = currentMode === ChatMode.Agent ? createVaultTools(ctx.app) : undefined;
+        await ctx.copilotService.createSession({
+          model,
+          mode: currentMode,
+          tools,
+        });
+        setSessionId(ctx.copilotService.getSessionId());
+      } catch (err: any) {
+        setError(friendlyError(err.message));
+      }
+    },
+    [ctx, currentMode],
   );
 
   const handleModeSwitch = useCallback(
@@ -228,7 +274,7 @@ export const CopilotChatPanel: React.FC = () => {
         await ctx.copilotService.switchMode(mode, tools);
         setSessionId(ctx.copilotService.getSessionId());
       } catch (err: any) {
-        setError(`Failed to switch mode: ${err.message}`);
+        setError(friendlyError(err.message));
       }
     },
     [ctx],
@@ -248,7 +294,7 @@ export const CopilotChatPanel: React.FC = () => {
       });
       setSessionId(ctx.copilotService.getSessionId());
     } catch (err: any) {
-      setError(`Failed to create conversation: ${err.message}`);
+      setError(friendlyError(err.message));
     }
   }, [ctx, currentMode, currentModel]);
 
@@ -256,6 +302,7 @@ export const CopilotChatPanel: React.FC = () => {
     if (!ctx) return;
     try {
       await ctx.copilotService.abort();
+      completeAllToolCalls();
       setLoading(false);
       setLastMessageStreaming(false);
     } catch {
@@ -273,6 +320,7 @@ export const CopilotChatPanel: React.FC = () => {
       content: "",
       timestamp: Date.now(),
       isStreaming: true,
+      agentName: selectedAgent || undefined,
     });
 
     setLoading(true);
@@ -281,17 +329,16 @@ export const CopilotChatPanel: React.FC = () => {
     try {
       await ctx.copilotService.sendMessage(prompt);
     } catch (err: any) {
-      setError(err.message);
+      setError(friendlyError(err.message));
       setLoading(false);
     }
-  }, [ctx]);
+  }, [ctx, selectedAgent]);
 
   const canRetry = !isLoading && messages.length > 0 && !!lastUserPrompt.current;
 
   const handleAddAgent = useCallback(
     (agent: CustomAgentEntry) => {
       addCustomAgent(agent);
-      // Also persist to settings if context available
       if (ctx) {
         ctx.settings.customAgents = [...(ctx.settings.customAgents || []), agent];
       }
@@ -303,6 +350,7 @@ export const CopilotChatPanel: React.FC = () => {
     <div className="copilot-chat-container">
       <ChatHeader
         onNewConversation={handleNewConversation}
+        isConnected={initState === "ready"}
       />
       {error && (
         <div className="copilot-error-banner">
@@ -313,7 +361,7 @@ export const CopilotChatPanel: React.FC = () => {
         </div>
       )}
       {messages.length === 0 ? (
-        <EmptyState onSuggestionClick={handleSend} />
+        <EmptyState onSuggestionClick={handleSend} isInitializing={initState === "loading"} />
       ) : (
         <MessageList messages={messages} />
       )}
@@ -322,6 +370,7 @@ export const CopilotChatPanel: React.FC = () => {
         onAbort={handleAbort}
         onRetry={handleRetry}
         onModeSwitch={handleModeSwitch}
+        onModelChange={handleModelChange}
         onAddAgent={handleAddAgent}
         isLoading={isLoading}
         canRetry={canRetry}

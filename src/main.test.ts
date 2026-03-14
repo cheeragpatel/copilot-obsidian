@@ -176,19 +176,21 @@ describe("CopilotPlugin", () => {
     );
   });
 
-  it("onload() always auto-opens chat when layout is ready", async () => {
+  it("onload() auto-opens chat when openOnStartup is true", async () => {
     const { plugin, app } = createPlugin();
+    vi.mocked(plugin.loadData).mockResolvedValue({ openOnStartup: true });
     const activateViewSpy = vi
       .spyOn(plugin, "activateView")
       .mockResolvedValue(undefined);
 
     await plugin.onload();
 
+    expect(plugin.settings.openOnStartup).toBe(true);
     expect(app.workspace.onLayoutReady).toHaveBeenCalledTimes(1);
     expect(activateViewSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("onload() auto-opens even when openOnStartup is false", async () => {
+  it("onload() does NOT auto-open when openOnStartup is false", async () => {
     const { plugin, app } = createPlugin();
     vi.mocked(plugin.loadData).mockResolvedValue({ openOnStartup: false });
     const activateViewSpy = vi
@@ -199,7 +201,7 @@ describe("CopilotPlugin", () => {
 
     expect(plugin.settings.openOnStartup).toBe(false);
     expect(app.workspace.onLayoutReady).toHaveBeenCalledTimes(1);
-    expect(activateViewSpy).toHaveBeenCalledTimes(1);
+    expect(activateViewSpy).not.toHaveBeenCalled();
   });
 
   it("onunload() destroys service", async () => {

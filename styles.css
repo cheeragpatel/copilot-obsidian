@@ -885,3 +885,110 @@
   color: var(--text-error);
   border-color: var(--text-error);
 }
+
+/* ── Connection status badge ────────────────────────────── */
+.copilot-status-badge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.copilot-status-badge.connected {
+  background: var(--color-green, #3fb950);
+  box-shadow: 0 0 4px var(--color-green, #3fb950);
+}
+
+.copilot-status-badge.connecting {
+  background: var(--text-muted);
+  animation: copilot-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes copilot-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/* ── Initializing spinner in EmptyState ─────────────────── */
+.copilot-initializing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.copilot-init-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--text-muted);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: copilot-spin 0.8s linear infinite;
+}
+
+@keyframes copilot-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Code block copy button ─────────────────────────────── */
+.copilot-code-block-wrapper {
+  position: relative;
+}
+
+.copilot-code-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 5;
+}
+
+.copilot-code-block-wrapper:hover .copilot-code-copy-btn {
+  opacity: 1;
+}
+
+.copilot-code-copy-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+/* ── Jump-to-bottom button ──────────────────────────────── */
+.copilot-message-list {
+  position: relative;
+}
+
+.copilot-jump-bottom-btn {
+  position: sticky;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: block;
+  margin: 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+  transition: opacity 0.15s;
+}
+
+.copilot-jump-bottom-btn:hover {
+  opacity: 0.85;
+}

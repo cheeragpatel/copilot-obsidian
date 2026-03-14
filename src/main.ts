@@ -31,6 +31,7 @@ export default class CopilotPlugin extends Plugin {
     this.addCommand({
       id: "open-copilot-chat",
       name: "Open Copilot Chat",
+      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "l" }],
       callback: () => {
         this.activateView();
       },
@@ -48,11 +49,11 @@ export default class CopilotPlugin extends Plugin {
     // Add settings tab
     this.addSettingTab(new CopilotSettingsTab(this.app, this));
 
-    // Always open chat sidebar when the layout is ready on first install,
-    // then respect the openOnStartup setting afterward
+    // Open chat sidebar when the layout is ready if openOnStartup is set
     this.app.workspace.onLayoutReady(() => {
-      // Always activate on layout ready so the sidebar is visible
-      this.activateView();
+      if (this.settings.openOnStartup) {
+        this.activateView();
+      }
     });
   }
 

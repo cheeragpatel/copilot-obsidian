@@ -4,6 +4,7 @@ import { PluginContext } from "../views/CopilotChatView";
 
 interface EmptyStateProps {
   onSuggestionClick: (text: string) => void;
+  isInitializing?: boolean;
 }
 
 interface SmartSuggestion {
@@ -57,7 +58,7 @@ function useSmartSuggestions(): SmartSuggestion[] {
   return suggestions;
 }
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick }) => {
+export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick, isInitializing }) => {
   const suggestions = useSmartSuggestions();
 
   return (
@@ -77,21 +78,30 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick }) => 
         </svg>
       </div>
       <h4 className="copilot-empty-title">GitHub Copilot for Obsidian</h4>
-      <p className="copilot-empty-subtitle">
-        Ask questions about your notes, or use /commands and @agents.
-      </p>
-      <div className="copilot-empty-suggestions">
-        {suggestions.map((s) => (
-          <button
-            key={s.label}
-            className="copilot-suggestion-btn"
-            onClick={() => onSuggestionClick(s.prompt)}
-          >
-            <span className="copilot-suggestion-icon">{s.icon}</span>
-            {s.label}
-          </button>
-        ))}
-      </div>
+      {isInitializing ? (
+        <p className="copilot-empty-subtitle copilot-initializing">
+          <span className="copilot-init-spinner" />
+          Connecting to Copilot…
+        </p>
+      ) : (
+        <>
+          <p className="copilot-empty-subtitle">
+            Ask questions about your notes, or use /commands and @agents.
+          </p>
+          <div className="copilot-empty-suggestions">
+            {suggestions.map((s) => (
+              <button
+                key={s.label}
+                className="copilot-suggestion-btn"
+                onClick={() => onSuggestionClick(s.prompt)}
+              >
+                <span className="copilot-suggestion-icon">{s.icon}</span>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };
