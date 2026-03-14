@@ -8,6 +8,12 @@ import { promptPermission } from "../views/PermissionModal";
 
 type EventCallback = (event: SessionEvent) => void;
 
+type DiscoveredTool = {
+  name: string;
+  namespacedName?: string;
+  description: string;
+};
+
 interface SessionOptions {
   model?: string;
   mode?: ChatMode;
@@ -26,6 +32,7 @@ export class CopilotService {
   private settings: PluginSettings;
   private app: App;
   private eventListeners: Set<EventCallback> = new Set();
+  private discoveredTools: Map<string, DiscoveredTool> = new Map();
   private currentMode: ChatMode;
 
   constructor(app: App, settings: PluginSettings) {
@@ -129,6 +136,8 @@ export class CopilotService {
       }
     }
 
+    this.discoveredTools.clear();
+
     const model = options.model || this.settings.defaultModel || DEFAULT_MODEL;
     const mode = options.mode || this.currentMode;
     this.currentMode = mode;
@@ -225,13 +234,7 @@ export class CopilotService {
     }
 
     this.session = await this.client.createSession(sessionConfig);
-
-    // Attach event listener
-    this.session.on((event: SessionEvent) => {
-      for (const listener of this.eventListeners) {
-        listener(event);
-      }
-    });
+    this.attachSessionListener();
   }
 
   async sendMessage(prompt: string, attachments?: FileAttachment[]): Promise<void> {
@@ -287,21 +290,50 @@ export class CopilotService {
     return this.session?.sessionId || null;
   }
 
+  async listTools(): Promise<DiscoveredTool[]> {
+    const lookups = [
+      () => (this.session as any)?.rpc?.tools?.list?.({}),
+      () => (this.session as any)?.listTools?.(),
+      () => (this.session as any)?.getTools?.(),
+      () => (this.session as any)?.tools?.(),
+      () => (this.client as any)?.listTools?.(),
+      () => (this.client as any)?.getTools?.(),
+      () => (this.client as any)?.tools?.(),
+    ];
+
+    for (const lookup of lookups) {
+      try {
+        const result = await lookup();
+        const tools = Array.isArray(result)
+          ? result
+          : Array.isArray(result?.tools)
+            ? result.tools
+            : [];
+
+        if (tools.length > 0) {
+          return this.rememberDiscoveredTools(tools);
+        }
+      } catch {
+        // Ignore lookup errors and continue to the next fallback.
+      }
+    }
+
+    return this.rememberDiscoveredTools([]);
+  }
+
   async resumeSession(sessionId: string, tools?: ReturnType<typeof defineTool>[]): Promise<void> {
     if (!this.client) {
       throw new Error("CopilotClient not initialized.");
     }
+
+    this.discoveredTools.clear();
 
     this.session = await this.client.resumeSession(sessionId, {
       tools: tools || [],
       onPermissionRequest: (request: any) => promptPermission(this.app, request),
     });
 
-    this.session.on((event: SessionEvent) => {
-      for (const listener of this.eventListeners) {
-        listener(event);
-      }
-    });
+    this.attachSessionListener();
   }
 
   async listSessions(): Promise<any[]> {
@@ -331,6 +363,106 @@ export class CopilotService {
 
   updateSettings(settings: PluginSettings): void {
     this.settings = settings;
+  }
+
+  private attachSessionListener(): void {
+    if (!this.session?.on) return;
+
+    this.session.on((event: SessionEvent) => {
+      const discoveredTool = this.extractDiscoveredToolFromEvent(event);
+      if (discoveredTool) {
+        this.rememberDiscoveredTools([discoveredTool]);
+      }
+
+      for (const listener of this.eventListeners) {
+        listener(event);
+      }
+    });
+  }
+
+  private normalizeDiscoveredTool(tool: any): DiscoveredTool | null {
+    const namespacedName = typeof tool?.namespacedName === "string" && tool.namespacedName.trim()
+      ? tool.namespacedName.trim()
+      : typeof tool?.name === "string" && tool.name.includes("/")
+        ? tool.name
+        : undefined;
+
+    const name = typeof tool?.name === "string" && tool.name.trim() && tool.name !== namespacedName
+      ? tool.name.trim()
+      : namespacedName?.includes("/")
+        ? namespacedName.split("/").slice(1).join("/")
+        : namespacedName?.includes("_")
+          ? namespacedName.slice(namespacedName.indexOf("_") + 1)
+          : typeof tool?.name === "string" && tool.name.trim()
+            ? tool.name.trim()
+            : undefined;
+
+    if (!name) return null;
+
+    const description = typeof tool?.description === "string"
+      ? tool.description
+      : typeof tool?.toolDescription === "string"
+        ? tool.toolDescription
+        : "";
+
+    return {
+      name,
+      ...(namespacedName ? { namespacedName } : {}),
+      description,
+    };
+  }
+
+  private rememberDiscoveredTools(tools: any[]): DiscoveredTool[] {
+    for (const tool of tools) {
+      const normalized = this.normalizeDiscoveredTool(tool);
+      if (!normalized) continue;
+
+      const key = normalized.namespacedName || normalized.name;
+      const existing = this.discoveredTools.get(key);
+      this.discoveredTools.set(key, {
+        ...existing,
+        ...normalized,
+        description: normalized.description || existing?.description || "",
+      });
+    }
+
+    return Array.from(this.discoveredTools.values()).sort((left, right) =>
+      (left.namespacedName || left.name).localeCompare(right.namespacedName || right.name),
+    );
+  }
+
+  private extractDiscoveredToolFromEvent(event: SessionEvent): DiscoveredTool | null {
+    const eventType = event.type as string;
+    if (eventType !== "tool.execution_start" && eventType !== "tool.executionStart") {
+      return null;
+    }
+
+    const eventData = event.data as any;
+    const rawName = typeof eventData?.mcpToolName === "string"
+      ? eventData.mcpToolName
+      : typeof eventData?.name === "string"
+        ? eventData.name
+        : typeof eventData?.toolName === "string"
+          ? eventData.toolName
+          : undefined;
+
+    const namespacedName = typeof eventData?.namespacedName === "string"
+      ? eventData.namespacedName
+      : typeof eventData?.mcpServerName === "string" && rawName
+        ? `${eventData.mcpServerName}/${rawName}`
+        : typeof eventData?.serverName === "string" && rawName
+          ? `${eventData.serverName}/${rawName}`
+          : undefined;
+
+    return this.normalizeDiscoveredTool({
+      name: rawName || namespacedName,
+      namespacedName,
+      description: typeof eventData?.description === "string"
+        ? eventData.description
+        : typeof eventData?.toolDescription === "string"
+          ? eventData.toolDescription
+          : "",
+    });
   }
 
   private serializeMCPServer(server: MCPServerEntry): Record<string, any> | null {
@@ -403,5 +535,6 @@ export class CopilotService {
     }
 
     this.eventListeners.clear();
+    this.discoveredTools.clear();
   }
 }

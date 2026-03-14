@@ -9,6 +9,7 @@ import {
 export const mockService = {
   initialize: vi.fn().mockResolvedValue(undefined),
   createSession: vi.fn().mockResolvedValue(undefined),
+  listTools: vi.fn().mockResolvedValue([]),
   sendMessage: vi.fn().mockResolvedValue(undefined),
   abort: vi.fn().mockResolvedValue(undefined),
   onEvent: vi.fn().mockReturnValue(vi.fn()),

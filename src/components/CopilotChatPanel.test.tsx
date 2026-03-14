@@ -32,6 +32,7 @@ beforeEach(() => {
   vi.spyOn(ConfigDiscovery.prototype, "discover").mockResolvedValue(emptyDiscovery);
   mockService.initialize.mockResolvedValue(undefined);
   mockService.createSession.mockResolvedValue(undefined);
+  mockService.listTools.mockResolvedValue([]);
   mockService.sendMessage.mockResolvedValue(undefined);
   mockService.abort.mockResolvedValue(undefined);
   mockService.onEvent.mockReturnValue(vi.fn());
@@ -89,6 +90,39 @@ describe("CopilotChatPanel", () => {
 
     expect(screen.getByText("Existing message")).toBeInTheDocument();
     expect(screen.queryByText("GitHub Copilot for Obsidian")).not.toBeInTheDocument();
+  });
+
+  it("discovers MCP tools after creating a session", async () => {
+    mockService.listTools.mockResolvedValueOnce([
+      {
+        name: "query-docs",
+        namespacedName: "context7/query-docs",
+        description: "Query docs",
+      },
+    ]);
+
+    await renderPanel({
+      settings: {
+        mcpServers: [
+          {
+            name: "context7",
+            type: "http",
+            url: "https://mcp.context7.com/mcp",
+            enabled: true,
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(mockService.listTools).toHaveBeenCalledTimes(1);
+    });
+    expect(useChatStore.getState().mcpServers).toEqual([
+      expect.objectContaining({
+        server: expect.objectContaining({ name: "context7" }),
+        tools: [{ name: "query-docs", description: "Query docs", enabled: true }],
+      }),
+    ]);
   });
 
   it("shows an error banner and clears it when dismissed", async () => {

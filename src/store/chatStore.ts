@@ -37,6 +37,7 @@ interface ChatActions {
   setConversations: (conversations: ConversationMeta[]) => void;
   setDiscoveredAgents: (agents: CustomAgentEntry[]) => void;
   setMCPServers: (servers: MCPServerState[]) => void;
+  updateMCPTools: (tools: Array<{ name: string; namespacedName?: string; description: string }>) => void;
   toggleMCP: (name: string) => void;
   toggleMCPTool: (serverName: string, toolName: string) => void;
   getEnabledMCPConfig: () => Record<string, any>;
@@ -46,6 +47,34 @@ interface ChatActions {
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+}
+
+function getToolServerName(namespacedName?: string): string | null {
+  if (!namespacedName) return null;
+
+  const slashIndex = namespacedName.indexOf("/");
+  if (slashIndex > 0) {
+    return namespacedName.slice(0, slashIndex);
+  }
+
+  const underscoreIndex = namespacedName.indexOf("_");
+  if (underscoreIndex > 0) {
+    return namespacedName.slice(0, underscoreIndex);
+  }
+
+  return null;
+}
+
+function getDiscoveredToolName(tool: { name: string; namespacedName?: string }): string {
+  if (tool.namespacedName?.includes("/")) {
+    return tool.namespacedName.split("/").slice(1).join("/");
+  }
+
+  if (tool.namespacedName?.includes("_")) {
+    return tool.namespacedName.split(/_/).slice(1).join("/");
+  }
+
+  return tool.name;
 }
 
 export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
@@ -182,6 +211,32 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   setDiscoveredAgents: (agents) => set({ discoveredAgents: agents }),
 
   setMCPServers: (servers) => set({ mcpServers: servers }),
+
+  updateMCPTools: (discoveredTools) =>
+    set((state) => ({
+      mcpServers: state.mcpServers.map((serverState) => {
+        const serverTools = discoveredTools
+          .filter((tool) => getToolServerName(tool.namespacedName) === serverState.server.name)
+          .map((tool) => {
+            const resolvedName = getDiscoveredToolName(tool);
+            const existing = serverState.tools.find((current) =>
+              current.name === tool.name || current.name === resolvedName,
+            );
+
+            return {
+              name: resolvedName,
+              description: tool.description || existing?.description,
+              enabled: existing?.enabled ?? true,
+            };
+          });
+
+        if (serverTools.length > 0) {
+          return { ...serverState, tools: serverTools };
+        }
+
+        return serverState;
+      }),
+    })),
 
   toggleMCP: (name) =>
     set((state) => ({

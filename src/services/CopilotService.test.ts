@@ -40,6 +40,11 @@ const createTool = (name: string, description: string) =>
 
 const createSessionMock = (overrides: Partial<typeof mockSession> = {}) => ({
   sessionId: "test-session-123",
+  rpc: {
+    tools: {
+      list: vi.fn().mockResolvedValue({ tools: [] }),
+    },
+  },
   on: vi.fn().mockReturnValue(vi.fn()),
   send: vi.fn().mockResolvedValue(undefined),
   sendAndWait: vi.fn().mockResolvedValue({ data: { content: "test response" } }),
@@ -64,6 +69,7 @@ describe("CopilotService", () => {
     mockClient.stop.mockResolvedValue(undefined);
     mockClient.createSession.mockResolvedValue(mockSession);
     mockClient.resumeSession.mockResolvedValue(mockSession);
+    mockClient.listTools.mockResolvedValue([]);
     mockClient.listSessions.mockResolvedValue([]);
     mockClient.deleteSession.mockResolvedValue(undefined);
     mockClient.getState.mockReturnValue("connected");
@@ -74,6 +80,7 @@ describe("CopilotService", () => {
     mockSession.abort.mockResolvedValue(undefined);
     mockSession.destroy.mockResolvedValue(undefined);
     mockSession.getMessages.mockResolvedValue([]);
+    mockSession.rpc.tools.list.mockResolvedValue({ tools: [] });
 
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
@@ -484,6 +491,86 @@ describe("CopilotService", () => {
     await service.createSession();
 
     expect(service.getSessionId()).toBe("test-session-123");
+  });
+
+  it("listTools() returns tools from session RPC and falls back to client methods", async () => {
+    const service = new CopilotService(createMockApp(), createSettings());
+
+    await service.initialize();
+    await service.createSession();
+
+    mockSession.rpc.tools.list.mockResolvedValueOnce({
+      tools: [
+        {
+          name: "query-docs",
+          namespacedName: "context7/query-docs",
+          description: "Query docs",
+        },
+      ],
+    });
+
+    await expect(service.listTools()).resolves.toEqual([
+      {
+        name: "query-docs",
+        namespacedName: "context7/query-docs",
+        description: "Query docs",
+      },
+    ]);
+
+    mockSession.rpc.tools.list.mockRejectedValueOnce(new Error("rpc unavailable"));
+    mockClient.listTools.mockResolvedValueOnce([
+      {
+        name: "list_resources",
+        namespacedName: "azure/list_resources",
+        description: "List Azure resources",
+      },
+    ]);
+
+    await expect(service.listTools()).resolves.toEqual([
+      {
+        name: "list_resources",
+        namespacedName: "azure/list_resources",
+        description: "List Azure resources",
+      },
+      {
+        name: "query-docs",
+        namespacedName: "context7/query-docs",
+        description: "Query docs",
+      },
+    ]);
+  });
+
+  it("listTools() caches tools discovered from tool execution events", async () => {
+    let sessionHandler: ((event: any) => void) | undefined;
+    mockSession.on.mockImplementationOnce((callback: (event: any) => void) => {
+      sessionHandler = callback;
+      return vi.fn();
+    });
+
+    const service = new CopilotService(createMockApp(), createSettings());
+
+    await service.initialize();
+    await service.createSession();
+
+    mockSession.rpc.tools.list.mockRejectedValueOnce(new Error("rpc unavailable"));
+    mockClient.listTools.mockRejectedValueOnce(new Error("client unavailable"));
+
+    sessionHandler?.({
+      type: "tool.execution_start",
+      data: {
+        toolName: "query-docs",
+        serverName: "context7",
+        description: "Query docs",
+      },
+    });
+
+    await expect(service.listTools()).resolves.toEqual([
+      {
+        name: "query-docs",
+        namespacedName: "context7/query-docs",
+        description: "Query docs",
+      },
+    ]);
   });
 
   it("resumeSession() calls client.resumeSession with the session ID", async () => {

@@ -2,6 +2,11 @@ import { vi } from "vitest";
 
 export const mockSession = {
   sessionId: "test-session-123",
+  rpc: {
+    tools: {
+      list: vi.fn().mockResolvedValue({ tools: [] }),
+    },
+  },
   on: vi.fn().mockReturnValue(vi.fn()),
   send: vi.fn().mockResolvedValue(undefined),
   sendAndWait: vi.fn().mockResolvedValue({ data: { content: "test response" } }),
@@ -15,6 +20,7 @@ export const mockClient = {
   stop: vi.fn().mockResolvedValue(undefined),
   createSession: vi.fn().mockResolvedValue(mockSession),
   resumeSession: vi.fn().mockResolvedValue(mockSession),
+  listTools: vi.fn().mockResolvedValue([]),
   listSessions: vi.fn().mockResolvedValue([]),
   deleteSession: vi.fn().mockResolvedValue(undefined),
   getState: vi.fn().mockReturnValue("connected"),
@@ -34,6 +40,7 @@ export class CopilotClient {
   stop = mockClient.stop;
   createSession = mockClient.createSession;
   resumeSession = mockClient.resumeSession;
+  listTools = mockClient.listTools;
   listSessions = mockClient.listSessions;
   deleteSession = mockClient.deleteSession;
   getState = mockClient.getState;

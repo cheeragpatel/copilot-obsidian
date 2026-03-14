@@ -294,6 +294,43 @@ describe("useChatStore", () => {
     expect(useChatStore.getState().mcpServers).toEqual(servers);
   });
 
+  it("updateMCPTools replaces matching server tools and preserves enabled state", () => {
+    useChatStore.getState().setMCPServers([
+      createMCPServerState({
+        server: { name: "context7", type: "http", url: "https://context7.example.com", enabled: true },
+        tools: [{ name: "query-docs", description: "Old", enabled: false }],
+      }),
+      createMCPServerState({
+        server: { name: "azure", type: "stdio", command: "node", args: ["azure.js"], enabled: true },
+        tools: [{ name: "keep-existing", enabled: true }],
+      }),
+    ]);
+
+    useChatStore.getState().updateMCPTools([
+      {
+        name: "query-docs",
+        namespacedName: "context7/query-docs",
+        description: "Query docs",
+      },
+      {
+        name: "list_resources",
+        namespacedName: "azure/list_resources",
+        description: "List Azure resources",
+      },
+    ]);
+
+    expect(useChatStore.getState().mcpServers).toEqual([
+      expect.objectContaining({
+        server: expect.objectContaining({ name: "context7" }),
+        tools: [{ name: "query-docs", description: "Query docs", enabled: false }],
+      }),
+      expect.objectContaining({
+        server: expect.objectContaining({ name: "azure" }),
+        tools: [{ name: "list_resources", description: "List Azure resources", enabled: true }],
+      }),
+    ]);
+  });
+
   it("toggleMCP flips the enabled state for the matching server", () => {
     useChatStore.getState().setMCPServers([
       createMCPServerState({

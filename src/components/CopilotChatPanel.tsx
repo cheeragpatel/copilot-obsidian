@@ -134,6 +134,53 @@ function mergeMCPServers(
   return merged;
 }
 
+function getDiscoveredToolFromEvent(event: any): {
+  name: string;
+  namespacedName?: string;
+  description: string;
+} | null {
+  if (event.type !== "tool.execution_start" && event.type !== "tool.executionStart") {
+    return null;
+  }
+
+  const rawName = typeof event.data?.mcpToolName === "string"
+    ? event.data.mcpToolName
+    : typeof event.data?.name === "string"
+      ? event.data.name
+      : typeof event.data?.toolName === "string"
+        ? event.data.toolName
+        : undefined;
+
+  const namespacedName = typeof event.data?.namespacedName === "string"
+    ? event.data.namespacedName
+    : typeof event.data?.mcpServerName === "string" && rawName
+      ? `${event.data.mcpServerName}/${rawName}`
+      : typeof event.data?.serverName === "string" && rawName
+        ? `${event.data.serverName}/${rawName}`
+        : undefined;
+
+  const name = rawName
+    || (namespacedName?.includes("/")
+      ? namespacedName.split("/").slice(1).join("/")
+      : namespacedName?.includes("_")
+        ? namespacedName.slice(namespacedName.indexOf("_") + 1)
+        : undefined);
+
+  if (!name) {
+    return null;
+  }
+
+  return {
+    name,
+    ...(namespacedName ? { namespacedName } : {}),
+    description: typeof event.data?.description === "string"
+      ? event.data.description
+      : typeof event.data?.toolDescription === "string"
+        ? event.data.toolDescription
+        : "",
+  };
+}
+
 export const CopilotChatPanel: React.FC = () => {
   const ctx = useContext(PluginContext);
   const initialized = useRef(false);
@@ -167,6 +214,7 @@ export const CopilotChatPanel: React.FC = () => {
     setAvailableModels,
     setDiscoveredAgents,
     setMCPServers,
+    updateMCPTools,
     addCustomAgent,
     newConversation,
     setMessages,
@@ -174,6 +222,19 @@ export const CopilotChatPanel: React.FC = () => {
     discoveredAgents,
     getEnabledMCPConfig,
   } = useChatStore();
+
+  const discoverTools = useCallback(async () => {
+    if (!ctx) return;
+
+    try {
+      const tools = await ctx.copilotService.listTools();
+      if (tools.length > 0) {
+        updateMCPTools(tools);
+      }
+    } catch {
+      // Non-fatal: tools just won't show in the picker.
+    }
+  }, [ctx, updateMCPTools]);
 
   const recreateSession = useCallback(
     async (overrides: { model?: string; mode?: ChatMode } = {}) => {
@@ -191,8 +252,9 @@ export const CopilotChatPanel: React.FC = () => {
         mcpServers: getEnabledMCPConfig(),
       });
       setSessionId(ctx.copilotService.getSessionId());
+      await discoverTools();
     },
-    [ctx, currentMode, currentModel, getEnabledMCPConfig, setSessionId],
+    [ctx, currentMode, currentModel, discoverTools, getEnabledMCPConfig, setSessionId],
   );
 
   const saveConversation = useCallback(async () => {
@@ -269,6 +331,7 @@ export const CopilotChatPanel: React.FC = () => {
           mcpServers: sessionMCPConfig,
         });
         setSessionId(ctx.copilotService.getSessionId());
+        await discoverTools();
         setInitState("ready");
       } catch (err: any) {
         setInitState("error");
@@ -277,7 +340,7 @@ export const CopilotChatPanel: React.FC = () => {
     };
 
     initPromise.current = initService();
-  }, [ctx]);
+  }, [ctx, discoverTools, setAvailableModels, setDiscoveredAgents, setError, setMCPServers, setSessionId]);
 
   useEffect(() => {
     if (!ctx) return;
@@ -294,17 +357,23 @@ export const CopilotChatPanel: React.FC = () => {
           setLoading(false);
           break;
         case "tool.execution_start":
-        case "tool.executionStart":
+        case "tool.executionStart": {
           addToolCall({
             id: generateId(),
-            name: event.data?.name || event.data?.toolName || "tool",
+            name: event.data?.mcpToolName || event.data?.name || event.data?.toolName || "tool",
             status: "running",
           });
+
+          const discoveredTool = getDiscoveredToolFromEvent(event);
+          if (discoveredTool) {
+            updateMCPTools([discoveredTool]);
+          }
           break;
+        }
         case "tool.execution_complete":
         case "tool.executionComplete":
           updateToolCall(
-            event.data?.name || event.data?.toolName || "tool",
+            event.data?.mcpToolName || event.data?.name || event.data?.toolName || "tool",
             "complete",
             typeof event.data?.result === "string"
               ? event.data.result
@@ -334,6 +403,7 @@ export const CopilotChatPanel: React.FC = () => {
     setError,
     setLastMessageStreaming,
     setLoading,
+    updateMCPTools,
     updateToolCall,
   ]);
 
@@ -531,6 +601,7 @@ export const CopilotChatPanel: React.FC = () => {
         if (initPromise.current) await initPromise.current;
         await ctx.copilotService.resumeSession(sessionId);
         setSessionId(ctx.copilotService.getSessionId() ?? sessionId);
+        await discoverTools();
       } catch {
         try {
           await recreateSession();
@@ -539,7 +610,7 @@ export const CopilotChatPanel: React.FC = () => {
         }
       }
     },
-    [ctx, recreateSession, setError, setMessages, setSessionId],
+    [ctx, discoverTools, recreateSession, setError, setMessages, setSessionId],
   );
 
   const handleHistoryClose = useCallback(() => {
