@@ -117,7 +117,7 @@ export class CopilotService {
       });
       await this.client.start();
     } catch (error) {
-      console.error("[Copilot] Failed to initialize client:", error);
+      console.error("[Copilot] Failed to initialize client:", (error as Error)?.message || "Unknown error");
       throw error;
     }
   }

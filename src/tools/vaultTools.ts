@@ -4,6 +4,16 @@ import type { App, CachedMetadata, TFile } from "obsidian";
 const DEFAULT_SEARCH_LIMIT = 20;
 const SEARCH_SNIPPET_LENGTH = 200;
 
+/** Reject paths that attempt traversal, absolute access, or null-byte injection. */
+function isUnsafeVaultPath(p: string): boolean {
+  const normalized = p.replace(/\\/g, "/");
+  return (
+    normalized.includes("..") ||
+    normalized.startsWith("/") ||
+    normalized.includes("\0")
+  );
+}
+
 type SearchMatchType = "path" | "metadata" | "content";
 
 type SearchCandidate = {
@@ -100,6 +110,10 @@ export function createVaultTools(app: App) {
       required: ["path"],
     },
     handler: async (args: { path: string }) => {
+      if (isUnsafeVaultPath(args.path)) {
+        return { error: "Invalid path: must be relative to vault root without '..' segments" };
+      }
+
       const file = app.vault.getAbstractFileByPath(args.path);
       if (!file || !(file instanceof (app.vault as any).constructor)) {
         // Use metadataCache to check if file exists
@@ -261,6 +275,10 @@ export function createVaultTools(app: App) {
       required: ["path", "content"],
     },
     handler: async (args: { path: string; content: string }) => {
+      if (isUnsafeVaultPath(args.path)) {
+        return { error: "Invalid path: must be relative to vault root without '..' segments" };
+      }
+
       const existing = app.vault.getAbstractFileByPath(args.path);
       if (existing) {
         return { error: `File already exists: ${args.path}` };
@@ -296,6 +314,10 @@ export function createVaultTools(app: App) {
       required: ["path", "operation", "content"],
     },
     handler: async (args: { path: string; operation: string; content: string }) => {
+      if (isUnsafeVaultPath(args.path)) {
+        return { error: "Invalid path: must be relative to vault root without '..' segments" };
+      }
+
       const file = app.vault.getFileByPath(args.path);
       if (!file) {
         return { error: `Note not found: ${args.path}` };
@@ -355,6 +377,10 @@ export function createVaultTools(app: App) {
       required: ["path"],
     },
     handler: async (args: { path: string }) => {
+      if (isUnsafeVaultPath(args.path)) {
+        return { error: "Invalid path: must be relative to vault root without '..' segments" };
+      }
+
       const file = app.vault.getFileByPath(args.path);
       if (!file) {
         return { error: `Note not found: ${args.path}` };

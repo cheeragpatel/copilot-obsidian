@@ -29,12 +29,19 @@ interface RawMCPServerEntry {
   tools?: unknown;
 }
 
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function asServerRecord(value: unknown): Record<string, RawMCPServerEntry> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
 
-  return value as Record<string, RawMCPServerEntry>;
+  const record: Record<string, RawMCPServerEntry> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (DANGEROUS_KEYS.has(key)) continue;
+    record[key] = entry as RawMCPServerEntry;
+  }
+  return record;
 }
 
 function asStringArray(value: unknown): string[] | undefined {
@@ -140,7 +147,7 @@ export class ConfigDiscovery {
         const content = await this.app.vault.read(file);
         this.appendMCPServers(servers, seen, JSON.parse(content), "vault");
       } catch (error) {
-        console.warn(`[Copilot] Failed to parse ${candidate}:`, error);
+        console.warn(`[Copilot] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
       }
     }
 
@@ -170,7 +177,7 @@ export class ConfigDiscovery {
           const content = fs.readFileSync(candidate, "utf-8");
           this.appendMCPServers(servers, seen, JSON.parse(content), "home");
         } catch (error) {
-          console.warn(`[Copilot] Failed to parse ${candidate}:`, error);
+          console.warn(`[Copilot] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
         }
       }
     } catch {
@@ -225,7 +232,7 @@ export class ConfigDiscovery {
       try {
         parts.push(await this.app.vault.read(repoInstructions));
       } catch (error) {
-        console.warn("[Copilot] Failed to read .github/copilot-instructions.md:", error);
+        console.warn("[Copilot] Failed to read .github/copilot-instructions.md:", (error as Error)?.message || "Unknown error");
       }
     }
 
@@ -239,7 +246,7 @@ export class ConfigDiscovery {
         try {
           parts.push(await this.app.vault.read(file));
         } catch (error) {
-          console.warn(`[Copilot] Failed to read ${file.path}:`, error);
+          console.warn(`[Copilot] Failed to read ${file.path}:`, (error as Error)?.message || "Unknown error");
         }
       }
     }
@@ -276,7 +283,7 @@ export class ConfigDiscovery {
             agents.push(agent);
           }
         } catch (error) {
-          console.warn(`[Copilot] Failed to read agent ${file.path}:`, error);
+          console.warn(`[Copilot] Failed to read agent ${file.path}:`, (error as Error)?.message || "Unknown error");
         }
       }
     }

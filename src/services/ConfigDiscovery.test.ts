@@ -171,7 +171,7 @@ describe("ConfigDiscovery", () => {
     ]);
     expect(warnSpy).toHaveBeenCalledWith(
       "[Copilot] Failed to parse .github/copilot/mcp.json:",
-      expect.any(SyntaxError),
+      expect.any(String),
     );
   });
 
@@ -351,7 +351,7 @@ describe("ConfigDiscovery", () => {
     ]);
     expect(warnSpy).toHaveBeenCalledWith(
       `[Copilot] Failed to parse ${invalidPath}:`,
-      expect.any(SyntaxError),
+      expect.any(String),
     );
   });
 
