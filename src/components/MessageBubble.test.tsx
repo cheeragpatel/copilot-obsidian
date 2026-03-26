@@ -139,4 +139,18 @@ describe("MessageBubble", () => {
     expect(screen.queryByText("Copilot")).not.toBeInTheDocument();
   });
 
+  it("shows a notice when clipboard write fails", async () => {
+    const user = userEvent.setup();
+    const noticeSpy = vi.spyOn(Obsidian, "Notice");
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(
+      new Error("Clipboard blocked"),
+    );
+
+    render(<MessageBubble message={createMessage({ content: "Fail copy" })} />);
+
+    await user.click(screen.getByTitle("Copy message"));
+
+    expect(noticeSpy).toHaveBeenCalledWith("Failed to copy to clipboard");
+  });
+
 });

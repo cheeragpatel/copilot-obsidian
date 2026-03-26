@@ -17,11 +17,15 @@ interface MessageBubbleProps {
 /** Inline copy button for code blocks */
 const CodeBlockCopyButton: React.FC<{ code: string }> = ({ code }) => {
   const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      new Notice("Failed to copy to clipboard");
+    }
+  }, [code]);
   return (
     <button
       className="copilot-code-copy-btn"
@@ -43,10 +47,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   }, []);
   const codeTheme = isDark ? oneDark : oneLight;
 
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      new Notice("Failed to copy to clipboard");
+    }
   }, [message.content]);
 
   const handleInsertIntoNote = useCallback(() => {
