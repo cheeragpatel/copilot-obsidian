@@ -672,4 +672,90 @@ describe("CopilotService", () => {
     await expect(service.destroy()).resolves.toBeUndefined();
     expect((service as any).eventListeners.size).toBe(0);
   });
+
+  it("createSession() unsubscribes old session listener before destroying", async () => {
+    const unsubscribe1 = vi.fn();
+    const unsubscribe2 = vi.fn();
+    const firstSession = createSessionMock({ sessionId: "session-1" });
+    const secondSession = createSessionMock({ sessionId: "session-2" });
+    firstSession.on.mockReturnValue(unsubscribe1);
+    secondSession.on.mockReturnValue(unsubscribe2);
+    mockClient.createSession.mockResolvedValueOnce(firstSession).mockResolvedValueOnce(secondSession);
+
+    const service = new CopilotService(createMockApp(), createSettings());
+
+    await service.initialize();
+    await service.createSession();
+    expect(firstSession.on).toHaveBeenCalledTimes(1);
+
+    await service.createSession();
+    expect(unsubscribe1).toHaveBeenCalledTimes(1);
+    expect(secondSession.on).toHaveBeenCalledTimes(1);
+  });
+
+  it("destroy() calls unsubscribeSession", async () => {
+    const unsubscribe = vi.fn();
+    mockSession.on.mockReturnValue(unsubscribe);
+
+    const service = new CopilotService(createMockApp(), createSettings());
+
+    await service.initialize();
+    await service.createSession();
+    await service.destroy();
+
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("broadcasts synthetic error and idle events when client emits disconnect", async () => {
+    let clientHandler: ((event: any) => void) | undefined;
+    const clientWithOn = {
+      ...mockClient,
+      on: vi.fn((callback: (event: any) => void) => {
+        clientHandler = callback;
+        return vi.fn();
+      }),
+    };
+
+    mockClient.createSession.mockResolvedValue(mockSession);
+
+    const service = new CopilotService(createMockApp(), createSettings());
+    await service.initialize();
+
+    // Replace the client with one that has an `on` method
+    (service as any).client = clientWithOn;
+    await service.createSession();
+
+    const listener = vi.fn();
+    service.onEvent(listener);
+
+    clientHandler?.({ type: "disconnect", data: { message: "process exited" } });
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "session.error" }),
+    );
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "session.idle" }),
+    );
+  });
+
+  it("normalizes camelCase event types from the SDK", async () => {
+    let sessionHandler: ((event: any) => void) | undefined;
+    mockSession.on.mockImplementation((callback: (event: any) => void) => {
+      sessionHandler = callback;
+      return vi.fn();
+    });
+
+    const service = new CopilotService(createMockApp(), createSettings());
+    const listener = vi.fn();
+    service.onEvent(listener);
+
+    await service.initialize();
+    await service.createSession();
+
+    sessionHandler?.({ type: "tool.executionStart", data: { toolName: "search" } });
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "tool.execution_start" }),
+    );
+  });
 });

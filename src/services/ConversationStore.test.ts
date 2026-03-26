@@ -106,4 +106,20 @@ describe("ConversationStore", () => {
     await expect(store.loadAll()).resolves.toEqual([]);
     expect(data[STORAGE_KEY]).toEqual([]);
   });
+
+  it("concurrent saves do not lose data", async () => {
+    const conv1 = createConversation({ sessionId: "s1", title: "First", lastUpdated: 100 });
+    const conv2 = createConversation({ sessionId: "s2", title: "Second", lastUpdated: 200 });
+    const conv3 = createConversation({ sessionId: "s3", title: "Third", lastUpdated: 300 });
+
+    await Promise.all([
+      store.save(conv1),
+      store.save(conv2),
+      store.save(conv3),
+    ]);
+
+    const all = await store.loadAll();
+    const ids = all.map((c) => c.sessionId).sort();
+    expect(ids).toEqual(["s1", "s2", "s3"]);
+  });
 });
