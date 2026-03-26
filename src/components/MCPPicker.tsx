@@ -97,14 +97,14 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange }) => {
               <span>Configure MCP servers in settings or Copilot config files.</span>
             </div>
           ) : (
-            <div className="copilot-mcp-server-list">
+            <div className="copilot-mcp-server-list" role="listbox" aria-label="MCP Servers">
               {mcpServers.map((serverState) => {
                 const serverName = serverState.server.name;
                 const source = serverState.source || serverState.server.source || "settings";
                 const isExpanded = expandedServers.includes(serverName);
 
                 return (
-                  <div className="copilot-mcp-server" key={serverName}>
+                  <div className="copilot-mcp-server" key={serverName} role="option" aria-selected={serverState.enabled}>
                     <div className="copilot-mcp-server-row">
                       <label className="copilot-mcp-server-main">
                         <input

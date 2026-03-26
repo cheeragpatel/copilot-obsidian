@@ -99,4 +99,23 @@ describe("MCPPicker", () => {
 
     expect(screen.queryByText("MCP Servers")).not.toBeInTheDocument();
   });
+
+  it("renders ARIA attributes on the server list and server items", async () => {
+    const user = userEvent.setup();
+
+    useChatStore.setState({
+      ...baseState,
+      mcpServers: [createMCPServer()],
+    });
+
+    render(<MCPPicker />);
+
+    await user.click(screen.getByRole("button", { name: "Configure MCP servers" }));
+
+    const listbox = screen.getByRole("listbox", { name: "MCP Servers" });
+    expect(listbox).toBeInTheDocument();
+
+    const option = screen.getByRole("option");
+    expect(option).toHaveAttribute("aria-selected", "true");
+  });
 });
