@@ -5,14 +5,14 @@ import type { PluginSettings, MCPServerEntry } from "../types/settings";
 import type { FileAttachment } from "../types/chat";
 import { ConfigDiscovery } from "./ConfigDiscovery";
 import { promptPermission } from "../views/PermissionModal";
+import {
+  discoverTools as sdkDiscoverTools,
+  normalizeToolInfo,
+  normalizeEventType,
+  type DiscoveredTool,
+} from "./SDKCompat";
 
 type EventCallback = (event: SessionEvent) => void;
-
-type DiscoveredTool = {
-  name: string;
-  namespacedName?: string;
-  description: string;
-};
 
 interface SessionOptions {
   model?: string;
@@ -34,6 +34,7 @@ export class CopilotService {
   private eventListeners: Set<EventCallback> = new Set();
   private discoveredTools: Map<string, DiscoveredTool> = new Map();
   private currentMode: ChatMode;
+  private unsubscribeSession?: () => void;
 
   constructor(app: App, settings: PluginSettings) {
     this.app = app;
@@ -129,6 +130,8 @@ export class CopilotService {
 
     // Destroy existing session if any
     if (this.session) {
+      this.unsubscribeSession?.();
+      this.unsubscribeSession = undefined;
       try {
         await this.session.destroy();
       } catch {
@@ -291,33 +294,10 @@ export class CopilotService {
   }
 
   async listTools(): Promise<DiscoveredTool[]> {
-    const lookups = [
-      () => (this.session as any)?.rpc?.tools?.list?.({}),
-      () => (this.session as any)?.listTools?.(),
-      () => (this.session as any)?.getTools?.(),
-      () => (this.session as any)?.tools?.(),
-      () => (this.client as any)?.listTools?.(),
-      () => (this.client as any)?.getTools?.(),
-      () => (this.client as any)?.tools?.(),
-    ];
-
-    for (const lookup of lookups) {
-      try {
-        const result = await lookup();
-        const tools = Array.isArray(result)
-          ? result
-          : Array.isArray(result?.tools)
-            ? result.tools
-            : [];
-
-        if (tools.length > 0) {
-          return this.rememberDiscoveredTools(tools);
-        }
-      } catch {
-        // Ignore lookup errors and continue to the next fallback.
-      }
+    const tools = await sdkDiscoverTools(this.session, this.client);
+    if (tools.length > 0) {
+      return this.rememberDiscoveredTools(tools);
     }
-
     return this.rememberDiscoveredTools([]);
   }
 
@@ -368,53 +348,53 @@ export class CopilotService {
   private attachSessionListener(): void {
     if (!this.session?.on) return;
 
-    this.session.on((event: SessionEvent) => {
-      const discoveredTool = this.extractDiscoveredToolFromEvent(event);
-      if (discoveredTool) {
-        this.rememberDiscoveredTools([discoveredTool]);
+    this.unsubscribeSession = this.session.on((event: SessionEvent) => {
+      const normalized: SessionEvent = {
+        ...event,
+        type: normalizeEventType(event.type),
+      } as SessionEvent;
+
+      const eventType = normalized.type as string;
+      if (eventType === "tool.execution_start") {
+        const discoveredTool = normalizeToolInfo(normalized.data);
+        if (discoveredTool) {
+          this.rememberDiscoveredTools([discoveredTool]);
+        }
       }
 
       for (const listener of this.eventListeners) {
-        listener(event);
+        listener(normalized);
       }
     });
-  }
 
-  private normalizeDiscoveredTool(tool: any): DiscoveredTool | null {
-    const namespacedName = typeof tool?.namespacedName === "string" && tool.namespacedName.trim()
-      ? tool.namespacedName.trim()
-      : typeof tool?.name === "string" && tool.name.includes("/")
-        ? tool.name
-        : undefined;
+    // CLI crash detection: if the client exposes process health monitoring,
+    // listen for error/disconnect and broadcast synthetic events so UI
+    // loading state resets.
+    if (this.client && typeof (this.client as any).on === "function") {
+      (this.client as any).on((event: any) => {
+        const type = typeof event?.type === "string" ? event.type : "";
+        if (type === "error" || type === "disconnect") {
+          const errorEvent = {
+            type: "session.error",
+            data: { message: `CLI process ${type}: ${event?.data?.message || "unknown"}` },
+          } as SessionEvent;
+          const idleEvent = { type: "session.idle", data: {} } as SessionEvent;
 
-    const name = typeof tool?.name === "string" && tool.name.trim() && tool.name !== namespacedName
-      ? tool.name.trim()
-      : namespacedName?.includes("/")
-        ? namespacedName.split("/").slice(1).join("/")
-        : namespacedName?.includes("_")
-          ? namespacedName.slice(namespacedName.indexOf("_") + 1)
-          : typeof tool?.name === "string" && tool.name.trim()
-            ? tool.name.trim()
-            : undefined;
-
-    if (!name) return null;
-
-    const description = typeof tool?.description === "string"
-      ? tool.description
-      : typeof tool?.toolDescription === "string"
-        ? tool.toolDescription
-        : "";
-
-    return {
-      name,
-      ...(namespacedName ? { namespacedName } : {}),
-      description,
-    };
+          for (const listener of this.eventListeners) {
+            listener(errorEvent);
+            listener(idleEvent);
+          }
+        }
+      });
+    }
+    // NOTE: If the SDK does not expose a client.on() health monitoring API,
+    // CLI crashes without session.error will leave isLoading stuck. A
+    // heartbeat/polling mechanism would be needed to detect this.
   }
 
   private rememberDiscoveredTools(tools: any[]): DiscoveredTool[] {
     for (const tool of tools) {
-      const normalized = this.normalizeDiscoveredTool(tool);
+      const normalized = normalizeToolInfo(tool);
       if (!normalized) continue;
 
       const key = normalized.namespacedName || normalized.name;
@@ -429,40 +409,6 @@ export class CopilotService {
     return Array.from(this.discoveredTools.values()).sort((left, right) =>
       (left.namespacedName || left.name).localeCompare(right.namespacedName || right.name),
     );
-  }
-
-  private extractDiscoveredToolFromEvent(event: SessionEvent): DiscoveredTool | null {
-    const eventType = event.type as string;
-    if (eventType !== "tool.execution_start" && eventType !== "tool.executionStart") {
-      return null;
-    }
-
-    const eventData = event.data as any;
-    const rawName = typeof eventData?.mcpToolName === "string"
-      ? eventData.mcpToolName
-      : typeof eventData?.name === "string"
-        ? eventData.name
-        : typeof eventData?.toolName === "string"
-          ? eventData.toolName
-          : undefined;
-
-    const namespacedName = typeof eventData?.namespacedName === "string"
-      ? eventData.namespacedName
-      : typeof eventData?.mcpServerName === "string" && rawName
-        ? `${eventData.mcpServerName}/${rawName}`
-        : typeof eventData?.serverName === "string" && rawName
-          ? `${eventData.serverName}/${rawName}`
-          : undefined;
-
-    return this.normalizeDiscoveredTool({
-      name: rawName || namespacedName,
-      namespacedName,
-      description: typeof eventData?.description === "string"
-        ? eventData.description
-        : typeof eventData?.toolDescription === "string"
-          ? eventData.toolDescription
-          : "",
-    });
   }
 
   private serializeMCPServer(server: MCPServerEntry): Record<string, any> | null {
@@ -516,6 +462,9 @@ export class CopilotService {
   }
 
   async destroy(): Promise<void> {
+    this.unsubscribeSession?.();
+    this.unsubscribeSession = undefined;
+
     try {
       if (this.session) {
         await this.session.destroy();

@@ -43,6 +43,7 @@ export interface ConversationStoreLike {
 
 export class ConversationStore implements ConversationStoreLike {
   private plugin: PluginDataStore;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(plugin: PluginDataStore) {
     this.plugin = plugin;
@@ -65,6 +66,11 @@ export class ConversationStore implements ConversationStoreLike {
   }
 
   async save(conversation: StoredConversation): Promise<void> {
+    this.writeQueue = this.writeQueue.then(() => this._save(conversation)).catch(() => {});
+    return this.writeQueue;
+  }
+
+  private async _save(conversation: StoredConversation): Promise<void> {
     const data = await this.readData();
     const conversations = await this.loadAll();
     const index = conversations.findIndex((item) => item.sessionId === conversation.sessionId);
