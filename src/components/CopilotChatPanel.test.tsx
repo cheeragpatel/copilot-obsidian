@@ -133,7 +133,7 @@ describe("CopilotChatPanel", () => {
 
     expect(screen.getByText("Something went wrong")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "×" }));
+    await user.click(screen.getByRole("button", { name: "✕" }));
 
     await waitFor(() => {
       expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
@@ -152,15 +152,11 @@ describe("CopilotChatPanel", () => {
       expect(mockService.sendMessage).toHaveBeenCalledWith("Hello Copilot");
     });
 
-    expect(useChatStore.getState().messages).toHaveLength(2);
+    // Only the user message should exist; assistant message is created lazily on first delta
+    expect(useChatStore.getState().messages).toHaveLength(1);
     expect(useChatStore.getState().messages[0]).toMatchObject({
       role: "user",
       content: "Hello Copilot",
-    });
-    expect(useChatStore.getState().messages[1]).toMatchObject({
-      role: "assistant",
-      content: "",
-      isStreaming: true,
     });
   });
 
@@ -623,5 +619,140 @@ describe("CopilotChatPanel", () => {
     expect(useChatStore.getState().messages[0]).toMatchObject({
       isStreaming: false,
     });
+  });
+
+  it("creates assistant message lazily on first streaming delta", async () => {
+    const handlers: Array<(event: any) => void> = [];
+    mockService.onEvent.mockImplementation((handler: (event: any) => void) => {
+      handlers.push(handler);
+      return vi.fn();
+    });
+
+    await renderPanel();
+
+    // Simulate user sending a message (no assistant message pre-created)
+    useChatStore.setState({
+      messages: [
+        {
+          id: "message-1",
+          role: "user",
+          content: "Hello",
+          timestamp: 1,
+          isStreaming: false,
+        },
+      ],
+      isLoading: true,
+    });
+
+    // First delta should create the assistant message
+    await act(async () => {
+      handlers[0]?.({ type: "assistant.message_delta", data: { deltaContent: "Hi " } });
+    });
+
+    const msgs = useChatStore.getState().messages;
+    expect(msgs).toHaveLength(2);
+    expect(msgs[1]).toMatchObject({
+      role: "assistant",
+      content: "Hi ",
+      isStreaming: true,
+    });
+
+    // Second delta appends to existing message
+    await act(async () => {
+      handlers[0]?.({ type: "assistant.message_delta", data: { deltaContent: "there!" } });
+    });
+
+    const updatedMsgs = useChatStore.getState().messages;
+    expect(updatedMsgs).toHaveLength(2);
+    expect(updatedMsgs[1].content).toBe("Hi there!");
+  });
+
+  it("does not leave a ghost message when sendMessage fails", async () => {
+    const user = userEvent.setup();
+    mockService.sendMessage.mockRejectedValueOnce(new Error("network error"));
+
+    await renderPanel();
+
+    await user.type(screen.getByRole("textbox"), "Will fail");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(mockService.sendMessage).toHaveBeenCalled();
+    });
+
+    // Should only have the user message, no ghost assistant message
+    const msgs = useChatStore.getState().messages;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({ role: "user", content: "Will fail" });
+    expect(useChatStore.getState().error).toBeTruthy();
+    expect(useChatStore.getState().isLoading).toBe(false);
+  });
+
+  it("shows a retry button on error when there is a previous prompt", async () => {
+    const user = userEvent.setup();
+    mockService.sendMessage.mockRejectedValueOnce(new Error("network error"));
+
+    await renderPanel();
+
+    await user.type(screen.getByRole("textbox"), "Try this");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(useChatStore.getState().error).toBeTruthy();
+    });
+
+    // Retry button should be visible
+    const retryBtn = screen.getByRole("button", { name: "Retry" });
+    expect(retryBtn).toBeInTheDocument();
+
+    // Click retry should re-send the message
+    mockService.sendMessage.mockResolvedValueOnce(undefined);
+    await user.click(retryBtn);
+
+    await waitFor(() => {
+      expect(mockService.sendMessage).toHaveBeenCalledTimes(2);
+      expect(mockService.sendMessage).toHaveBeenLastCalledWith("Try this");
+    });
+  });
+
+  it("creates assistant message on tool execution start when none exists", async () => {
+    const handlers: Array<(event: any) => void> = [];
+    mockService.onEvent.mockImplementation((handler: (event: any) => void) => {
+      handlers.push(handler);
+      return vi.fn();
+    });
+
+    await renderPanel();
+
+    useChatStore.setState({
+      messages: [
+        {
+          id: "message-1",
+          role: "user",
+          content: "Search for docs",
+          timestamp: 1,
+          isStreaming: false,
+        },
+      ],
+      isLoading: true,
+    });
+
+    await act(async () => {
+      handlers[0]?.({
+        type: "tool.execution_start",
+        data: { name: "search", description: "Search docs" },
+      });
+    });
+
+    const msgs = useChatStore.getState().messages;
+    expect(msgs).toHaveLength(2);
+    expect(msgs[1]).toMatchObject({
+      role: "assistant",
+      content: "",
+      isStreaming: true,
+    });
+    expect(msgs[1].toolCalls).toEqual([
+      expect.objectContaining({ name: "search", status: "running" }),
+    ]);
   });
 });

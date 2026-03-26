@@ -12,6 +12,7 @@ import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { EmptyState } from "./EmptyState";
 import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
+import { mergeMCPServers } from "../services/MCPMerge";
 import type { ConversationMeta, FileAttachment, MCPServerState } from "../types/chat";
 import type { CustomAgentEntry, MCPServerEntry } from "../types/settings";
 
@@ -52,89 +53,8 @@ function toConversationMeta(session: any, fallbackModel: string): ConversationMe
   };
 }
 
-function buildEnabledMCPConfig(servers: MCPServerState[]): Record<string, any> {
-  const config: Record<string, any> = {};
-
-  for (const serverState of servers) {
-    if (!serverState.enabled) continue;
-
-    const disabledTools = serverState.tools.filter((tool) => !tool.enabled).map((tool) => tool.name);
-    const enabledTools = serverState.tools.filter((tool) => tool.enabled).map((tool) => tool.name);
-    const hasConfiguredTools = !!serverState.server.configTools?.length;
-    const usesWildcardTools = !!serverState.server.configTools?.includes("*");
-    const toolConfig = hasConfiguredTools && !usesWildcardTools
-      ? {
-          tools: enabledTools.length > 0 || serverState.tools.length > 0
-            ? enabledTools
-            : serverState.server.configTools,
-        }
-      : {
-          ...(hasConfiguredTools ? { tools: serverState.server.configTools } : {}),
-          ...(disabledTools.length > 0 ? { excludedTools: disabledTools } : {}),
-        };
-
-    if (serverState.server.type === "http" && serverState.server.url) {
-      config[serverState.server.name] = {
-        type: "http",
-        url: serverState.server.url,
-        ...(serverState.server.headers ? { headers: serverState.server.headers } : {}),
-        ...toolConfig,
-      };
-    } else if (serverState.server.type === "stdio" && serverState.server.command) {
-      config[serverState.server.name] = {
-        type: "stdio",
-        command: serverState.server.command,
-        args: serverState.server.args || [],
-        env: serverState.server.env || {},
-        ...toolConfig,
-      };
-    }
-  }
-
-  return config;
-}
-
-function mergeMCPServers(
-  settingsServers: MCPServerEntry[] = [],
-  discoveredServers: MCPServerEntry[] = [],
-  existingServers: MCPServerState[] = [],
-): MCPServerState[] {
-  const merged: MCPServerState[] = [];
-  const seen = new Set<string>();
-  const existingByName = new Map(existingServers.map((server) => [server.server.name, server]));
-
-  const appendServer = (server: MCPServerEntry, fallbackSource: MCPServerState["source"]) => {
-    if (seen.has(server.name)) return;
-    seen.add(server.name);
-
-    const existing = existingByName.get(server.name);
-    const enabled = existing?.enabled ?? server.enabled;
-    const source = server.source || fallbackSource;
-
-    const configuredTools = server.configTools && !server.configTools.includes("*")
-      ? server.configTools.map((name) => ({ name, enabled: true }))
-      : [];
-
-    merged.push({
-      server: { ...server, enabled, source },
-      enabled,
-      tools: existing?.tools.map((tool) => ({ ...tool })) || configuredTools,
-      source,
-    });
-  };
-
-  for (const server of settingsServers) {
-    appendServer(server, "settings");
-  }
-
-  for (const server of discoveredServers) {
-    appendServer(server, server.source || "vault");
-  }
-
-  return merged;
-}
-
-function getDiscoveredToolFromEvent(event: any): {
+// TODO: After merge, import { normalizeToolInfo } from "../services/SDKCompat"
+function getToolInfoFromEvent(event: any): {
   name: string;
   namespacedName?: string;
   description: string;
@@ -143,41 +63,14 @@ function getDiscoveredToolFromEvent(event: any): {
     return null;
   }
 
-  const rawName = typeof event.data?.mcpToolName === "string"
-    ? event.data.mcpToolName
-    : typeof event.data?.name === "string"
-      ? event.data.name
-      : typeof event.data?.toolName === "string"
-        ? event.data.toolName
-        : undefined;
-
-  const namespacedName = typeof event.data?.namespacedName === "string"
-    ? event.data.namespacedName
-    : typeof event.data?.mcpServerName === "string" && rawName
-      ? `${event.data.mcpServerName}/${rawName}`
-      : typeof event.data?.serverName === "string" && rawName
-        ? `${event.data.serverName}/${rawName}`
-        : undefined;
-
-  const name = rawName
-    || (namespacedName?.includes("/")
-      ? namespacedName.split("/").slice(1).join("/")
-      : namespacedName?.includes("_")
-        ? namespacedName.slice(namespacedName.indexOf("_") + 1)
-        : undefined);
-
-  if (!name) {
-    return null;
-  }
+  const data = event?.data || event;
+  const name = data?.mcpToolName || data?.toolName || data?.name;
+  if (!name) return null;
 
   return {
     name,
-    ...(namespacedName ? { namespacedName } : {}),
-    description: typeof event.data?.description === "string"
-      ? event.data.description
-      : typeof event.data?.toolDescription === "string"
-        ? event.data.toolDescription
-        : "",
+    namespacedName: data?.namespacedName || data?.name,
+    description: data?.description || data?.toolDescription || "",
   };
 }
 
@@ -186,9 +79,7 @@ export const CopilotChatPanel: React.FC = () => {
   const initialized = useRef(false);
   const initPromise = useRef<Promise<void> | null>(null);
   const commandRegistry = useRef(new SlashCommandRegistry());
-  const lastUserPrompt = useRef<string | null>(null);
-  const lastUserDisplay = useRef<string | null>(null);
-  const lastUserAttachments = useRef<FileAttachment[] | undefined>(undefined);
+  const lastUserPrompt = useRef<{ prompt: string; display: string; attachments?: FileAttachment[] } | null>(null);
   const [initState, setInitState] = useState<"loading" | "ready" | "error">("loading");
   const [showHistory, setShowHistory] = useState(false);
   const {
@@ -298,7 +189,7 @@ export const CopilotChatPanel: React.FC = () => {
 
         const initialMCPServers = mergeMCPServers(ctx.settings.mcpServers, [], useChatStore.getState().mcpServers);
         setMCPServers(initialMCPServers);
-        let sessionMCPConfig = buildEnabledMCPConfig(initialMCPServers);
+        let sessionMCPConfig = useChatStore.getState().getEnabledMCPConfig();
 
         // Discover agents and MCP servers from .copilot/, .github/, and home config.
         try {
@@ -315,7 +206,7 @@ export const CopilotChatPanel: React.FC = () => {
             useChatStore.getState().mcpServers,
           );
           setMCPServers(mergedMCPServers);
-          sessionMCPConfig = buildEnabledMCPConfig(mergedMCPServers);
+          sessionMCPConfig = useChatStore.getState().getEnabledMCPConfig();
         } catch {
           // Non-fatal: continue without discovered agents or MCP servers
         }
@@ -348,9 +239,25 @@ export const CopilotChatPanel: React.FC = () => {
     const unsubscribe = ctx.copilotService.onEvent((event: any) => {
       switch (event.type) {
         case "assistant.message_delta":
-        case "assistant.message.delta":
-          appendToLastAssistantMessage(event.data.deltaContent);
+        case "assistant.message.delta": {
+          const delta = event.data?.deltaContent || event.data?.content || "";
+          const messages = useChatStore.getState().messages;
+          const lastMsg = messages[messages.length - 1];
+
+          if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.isStreaming) {
+            addMessage({
+              id: generateId(),
+              role: "assistant",
+              content: delta,
+              timestamp: Date.now(),
+              isStreaming: true,
+              agentName: useChatStore.getState().selectedAgent || undefined,
+            });
+          } else {
+            appendToLastAssistantMessage(delta);
+          }
           break;
+        }
         case "assistant.message":
           completeAllToolCalls();
           setLastMessageStreaming(false);
@@ -358,13 +265,26 @@ export const CopilotChatPanel: React.FC = () => {
           break;
         case "tool.execution_start":
         case "tool.executionStart": {
+          const messages = useChatStore.getState().messages;
+          const lastMsg = messages[messages.length - 1];
+          if (!lastMsg || lastMsg.role !== "assistant" || !lastMsg.isStreaming) {
+            addMessage({
+              id: generateId(),
+              role: "assistant",
+              content: "",
+              timestamp: Date.now(),
+              isStreaming: true,
+              agentName: useChatStore.getState().selectedAgent || undefined,
+            });
+          }
+
           addToolCall({
             id: generateId(),
             name: event.data?.mcpToolName || event.data?.name || event.data?.toolName || "tool",
             status: "running",
           });
 
-          const discoveredTool = getDiscoveredToolFromEvent(event);
+          const discoveredTool = getToolInfoFromEvent(event);
           if (discoveredTool) {
             updateMCPTools([discoveredTool]);
           }
@@ -396,6 +316,7 @@ export const CopilotChatPanel: React.FC = () => {
     return () => unsubscribe();
   }, [
     ctx,
+    addMessage,
     addToolCall,
     appendToLastAssistantMessage,
     completeAllToolCalls,
@@ -496,20 +417,16 @@ export const CopilotChatPanel: React.FC = () => {
         attachments: messageAttachments,
       });
 
-      addMessage({
-        id: generateId(),
-        role: "assistant",
-        content: "",
-        timestamp: Date.now(),
-        isStreaming: true,
-        agentName: activeAgent || undefined,
-      });
-
       setLoading(true);
       setError(null);
-      lastUserPrompt.current = actualPrompt;
-      lastUserDisplay.current = displayText;
-      lastUserAttachments.current = messageAttachments;
+      lastUserPrompt.current = { prompt: actualPrompt, display: displayText, attachments: messageAttachments };
+
+      const loadingTimer = setTimeout(() => {
+        if (useChatStore.getState().isLoading) {
+          setLoading(false);
+          setError("Request timed out after 30 seconds. Please try again.");
+        }
+      }, 30000);
 
       try {
         if (messageAttachments) {
@@ -518,8 +435,16 @@ export const CopilotChatPanel: React.FC = () => {
           await ctx.copilotService.sendMessage(actualPrompt);
         }
       } catch (err: any) {
+        // Safety: remove ghost assistant message if one was created by an early delta
+        const msgs = useChatStore.getState().messages;
+        const lastMsg = msgs[msgs.length - 1];
+        if (lastMsg?.role === "assistant" && lastMsg.content === "" && lastMsg.isStreaming) {
+          useChatStore.getState().setMessages(msgs.slice(0, -1));
+        }
         setError(friendlyError(err.message));
         setLoading(false);
+      } finally {
+        clearTimeout(loadingTimer);
       }
     },
     [ctx, selectedAgent],
@@ -563,8 +488,6 @@ export const CopilotChatPanel: React.FC = () => {
 
     await saveConversation();
     lastUserPrompt.current = null;
-    lastUserDisplay.current = null;
-    lastUserAttachments.current = undefined;
     newConversation();
     try {
       await recreateSession();
@@ -594,8 +517,6 @@ export const CopilotChatPanel: React.FC = () => {
       setMessages(restoredMessages);
       setShowHistory(false);
       lastUserPrompt.current = null;
-      lastUserDisplay.current = null;
-      lastUserAttachments.current = undefined;
 
       try {
         if (initPromise.current) await initPromise.current;
@@ -631,31 +552,31 @@ export const CopilotChatPanel: React.FC = () => {
 
   const handleRetry = useCallback(async () => {
     if (!ctx || !lastUserPrompt.current) return;
-    const prompt = lastUserPrompt.current;
-
-    addMessage({
-      id: generateId(),
-      role: "assistant",
-      content: "",
-      timestamp: Date.now(),
-      isStreaming: true,
-      agentName: selectedAgent || undefined,
-    });
+    const { prompt, attachments } = lastUserPrompt.current;
 
     setLoading(true);
     setError(null);
 
+    const loadingTimer = setTimeout(() => {
+      if (useChatStore.getState().isLoading) {
+        setLoading(false);
+        setError("Request timed out after 30 seconds. Please try again.");
+      }
+    }, 30000);
+
     try {
-      if (lastUserAttachments.current) {
-        await ctx.copilotService.sendMessage(prompt, lastUserAttachments.current);
+      if (attachments) {
+        await ctx.copilotService.sendMessage(prompt, attachments);
       } else {
         await ctx.copilotService.sendMessage(prompt);
       }
     } catch (err: any) {
       setError(friendlyError(err.message));
       setLoading(false);
+    } finally {
+      clearTimeout(loadingTimer);
     }
-  }, [ctx, selectedAgent]);
+  }, [ctx, setError, setLoading]);
 
   const canRetry = !isLoading && messages.length > 0 && !!lastUserPrompt.current;
 
@@ -686,8 +607,13 @@ export const CopilotChatPanel: React.FC = () => {
       {error && (
         <div className="copilot-error-banner">
           <span>{error}</span>
-          <button className="copilot-error-dismiss" onClick={() => setError(null)}>
-            ×
+          {canRetry && (
+            <button className="copilot-retry-btn clickable-icon" onClick={handleRetry}>
+              Retry
+            </button>
+          )}
+          <button className="copilot-error-dismiss clickable-icon" onClick={() => setError(null)}>
+            ✕
           </button>
         </div>
       )}
