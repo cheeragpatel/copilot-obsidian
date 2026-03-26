@@ -153,4 +153,17 @@ describe("MessageBubble", () => {
     expect(noticeSpy).toHaveBeenCalledWith("Failed to copy to clipboard");
   });
 
+  it("handles clipboard write failure gracefully", async () => {
+    const user = userEvent.setup();
+    const noticeSpy = vi.spyOn(Obsidian, "Notice");
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("Clipboard denied"));
+
+    render(<MessageBubble message={createMessage({ content: "Copy me" })} />);
+
+    // Should not throw when clipboard fails
+    await expect(
+      user.click(screen.getByTitle("Copy message")),
+    ).resolves.toBeUndefined();
+  });
+
 });

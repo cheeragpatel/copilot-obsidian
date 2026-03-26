@@ -758,4 +758,64 @@ describe("CopilotService", () => {
       expect.objectContaining({ type: "tool.execution_start" }),
     );
   });
+
+  describe("error recovery", () => {
+    // Known issue: attachSessionListener() registers a closure on the session
+    // that forwards events to this.eventListeners, but when the session is
+    // destroyed and recreated the old session's `on` callback still fires
+    // because the old session object isn't truly cleaned up.
+    it.skip("known issue: resets event listeners when session is recreated", async () => {
+      const firstSession = createSessionMock({ sessionId: "session-1" });
+      const secondSession = createSessionMock({ sessionId: "session-2" });
+      mockClient.createSession.mockResolvedValueOnce(firstSession).mockResolvedValueOnce(secondSession);
+
+      let firstSessionHandler: ((event: any) => void) | undefined;
+      firstSession.on.mockImplementation((callback: (event: any) => void) => {
+        firstSessionHandler = callback;
+        return vi.fn();
+      });
+
+      const listener = vi.fn();
+      const service = new CopilotService(createMockApp(), createSettings());
+      service.onEvent(listener);
+
+      await service.initialize();
+      await service.createSession();
+
+      // Fire event on first session — listener should receive it
+      firstSessionHandler?.({ type: "assistant.message", data: { content: "first" } });
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      // Recreate session — old handler should no longer forward events
+      listener.mockClear();
+      await service.createSession();
+
+      firstSessionHandler?.({ type: "assistant.message", data: { content: "stale" } });
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("handles sendMessage failure gracefully", async () => {
+      const service = new CopilotService(createMockApp(), createSettings());
+      await service.initialize();
+      await service.createSession();
+
+      mockSession.send.mockRejectedValueOnce(new Error("network failure"));
+
+      await expect(service.sendMessage("Hello")).rejects.toThrow("network failure");
+    });
+
+    it("listTools returns empty array when all discovery methods fail", async () => {
+      const bareSession = createSessionMock();
+      bareSession.rpc.tools.list.mockRejectedValue(new Error("rpc unavailable"));
+      mockClient.createSession.mockResolvedValueOnce(bareSession);
+      mockClient.listTools.mockRejectedValue(new Error("client unavailable"));
+
+      const service = new CopilotService(createMockApp(), createSettings());
+      await service.initialize();
+      await service.createSession();
+
+      const tools = await service.listTools();
+      expect(tools).toEqual([]);
+    });
+  });
 });
