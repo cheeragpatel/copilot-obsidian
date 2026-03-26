@@ -1,6 +1,7 @@
 import { useChatStore, generateId } from "./chatStore";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
 import type { ChatMessage, ConversationMeta, ToolCallInfo, MCPServerState } from "../types/chat";
+import type { CustomAgentEntry } from "../types/settings";
 
 const initialState = {
   messages: [] as ChatMessage[],
@@ -12,8 +13,9 @@ const initialState = {
   selectedAgent: null as string | null,
   conversations: [] as ConversationMeta[],
   availableModels: [] as { id: string; name: string }[],
-  discoveredAgents: [] as [],
+  discoveredAgents: [] as CustomAgentEntry[],
   mcpServers: [] as MCPServerState[],
+  _loadingTimeoutId: undefined as number | undefined,
 };
 
 let messageCounter = 0;
@@ -32,6 +34,14 @@ const createToolCall = (overrides: Partial<ToolCallInfo> = {}): ToolCallInfo => 
   name: `tool-${messageCounter}`,
   status: "running",
   ...overrides,
+});
+
+const createAgent = (name: string): CustomAgentEntry => ({
+  name,
+  displayName: name,
+  description: `${name} agent`,
+  prompt: `${name} prompt`,
+  enabled: true,
 });
 
 const createMCPServerState = (overrides: Partial<MCPServerState> = {}): MCPServerState => ({
@@ -247,7 +257,10 @@ describe("useChatStore", () => {
     expect(useChatStore.getState().currentSessionId).toBe("session-123");
   });
 
-  it("setAgent updates the selected agent", () => {
+  it("setAgent updates the selected agent when agent exists", () => {
+    useChatStore.setState({
+      discoveredAgents: [createAgent("code-review")],
+    });
     useChatStore.getState().setAgent("code-review");
 
     expect(useChatStore.getState().selectedAgent).toBe("code-review");
@@ -508,5 +521,214 @@ describe("useChatStore", () => {
     expect(first).toEqual(expect.any(String));
     expect(second).toEqual(expect.any(String));
     expect(first).not.toBe(second);
+  });
+
+  describe("removeLastAssistantMessage", () => {
+    it("removes the last assistant message from the array", () => {
+      const user = createMessage({ role: "user", content: "hi" });
+      const firstAssistant = createMessage({ role: "assistant", content: "first" });
+      const secondAssistant = createMessage({ role: "assistant", content: "second" });
+
+      useChatStore.setState({ messages: [user, firstAssistant, secondAssistant] });
+      useChatStore.getState().removeLastAssistantMessage();
+
+      expect(useChatStore.getState().messages).toEqual([user, firstAssistant]);
+    });
+
+    it("does nothing when there are no assistant messages", () => {
+      const messages = [
+        createMessage({ role: "user", content: "hi" }),
+        createMessage({ role: "system", content: "sys" }),
+      ];
+
+      useChatStore.setState({ messages });
+      useChatStore.getState().removeLastAssistantMessage();
+
+      expect(useChatStore.getState().messages).toEqual(messages);
+    });
+
+    it("removes the only assistant message when there is exactly one", () => {
+      const user = createMessage({ role: "user", content: "hi" });
+      const assistant = createMessage({ role: "assistant", content: "response" });
+
+      useChatStore.setState({ messages: [user, assistant] });
+      useChatStore.getState().removeLastAssistantMessage();
+
+      expect(useChatStore.getState().messages).toEqual([user]);
+    });
+  });
+
+  describe("setLoadingWithTimeout", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("sets loading true and auto-resets after timeout", () => {
+      useChatStore.getState().setLoadingWithTimeout(100);
+
+      expect(useChatStore.getState().isLoading).toBe(true);
+
+      vi.advanceTimersByTime(100);
+
+      expect(useChatStore.getState().isLoading).toBe(false);
+      expect(useChatStore.getState().error).toBe("Request timed out. Please try again.");
+    });
+
+    it("cleanup function clears the timeout", () => {
+      const cleanup = useChatStore.getState().setLoadingWithTimeout(100);
+
+      expect(useChatStore.getState().isLoading).toBe(true);
+
+      cleanup();
+      vi.advanceTimersByTime(100);
+
+      // Loading was set by setLoadingWithTimeout; cleanup only clears the timeout, not loading
+      expect(useChatStore.getState().isLoading).toBe(true);
+      expect(useChatStore.getState().error).toBeNull();
+    });
+
+    it("setLoading(false) clears pending timeout", () => {
+      useChatStore.getState().setLoadingWithTimeout(100);
+
+      expect(useChatStore.getState().isLoading).toBe(true);
+
+      useChatStore.getState().setLoading(false);
+      vi.advanceTimersByTime(100);
+
+      expect(useChatStore.getState().isLoading).toBe(false);
+      expect(useChatStore.getState().error).toBeNull();
+      expect(useChatStore.getState()._loadingTimeoutId).toBeUndefined();
+    });
+
+    it("uses default 30s timeout", () => {
+      useChatStore.getState().setLoadingWithTimeout();
+
+      vi.advanceTimersByTime(29999);
+      expect(useChatStore.getState().isLoading).toBe(true);
+
+      vi.advanceTimersByTime(1);
+      expect(useChatStore.getState().isLoading).toBe(false);
+    });
+  });
+
+  describe("setAgent validation", () => {
+    it("sets null when agent name does not exist in discoveredAgents", () => {
+      useChatStore.setState({
+        discoveredAgents: [createAgent("code-review")],
+      });
+
+      useChatStore.getState().setAgent("nonexistent-agent");
+
+      expect(useChatStore.getState().selectedAgent).toBeNull();
+    });
+
+    it("setAgent(null) always sets null regardless of discoveredAgents", () => {
+      useChatStore.setState({
+        discoveredAgents: [createAgent("code-review")],
+        selectedAgent: "code-review",
+      });
+
+      useChatStore.getState().setAgent(null);
+
+      expect(useChatStore.getState().selectedAgent).toBeNull();
+    });
+
+    it("sets the agent when it exists in discoveredAgents", () => {
+      useChatStore.setState({
+        discoveredAgents: [createAgent("code-review"), createAgent("docs-writer")],
+      });
+
+      useChatStore.getState().setAgent("docs-writer");
+
+      expect(useChatStore.getState().selectedAgent).toBe("docs-writer");
+    });
+  });
+
+  describe("updateMCPTools Map optimization", () => {
+    it("correctly maps tools to servers with many tools and servers", () => {
+      const servers: MCPServerState[] = [];
+      for (let i = 0; i < 10; i++) {
+        servers.push(
+          createMCPServerState({
+            server: { name: `server-${i}`, type: "http", url: `https://s${i}.example.com`, enabled: true },
+            tools: [{ name: `old-tool-${i}`, description: "Old", enabled: false }],
+          }),
+        );
+      }
+      useChatStore.getState().setMCPServers(servers);
+
+      const discoveredTools: Array<{ name: string; namespacedName: string; description: string }> = [];
+      for (let i = 0; i < 10; i++) {
+        for (let j = 0; j < 5; j++) {
+          discoveredTools.push({
+            name: `tool-${j}`,
+            namespacedName: `server-${i}/tool-${j}`,
+            description: `Tool ${j} on server ${i}`,
+          });
+        }
+      }
+
+      useChatStore.getState().updateMCPTools(discoveredTools);
+
+      const state = useChatStore.getState();
+      for (let i = 0; i < 10; i++) {
+        const server = state.mcpServers.find((s) => s.server.name === `server-${i}`);
+        expect(server).toBeDefined();
+        expect(server!.tools).toHaveLength(5);
+        for (let j = 0; j < 5; j++) {
+          expect(server!.tools[j]).toEqual({
+            name: `tool-${j}`,
+            description: `Tool ${j} on server ${i}`,
+            enabled: true,
+          });
+        }
+      }
+    });
+
+    it("preserves enabled state from existing tools via Map lookup", () => {
+      useChatStore.getState().setMCPServers([
+        createMCPServerState({
+          server: { name: "myserver", type: "http", url: "https://my.example.com", enabled: true },
+          tools: [
+            { name: "search", description: "Old search", enabled: false },
+            { name: "read", description: "Old read", enabled: true },
+          ],
+        }),
+      ]);
+
+      useChatStore.getState().updateMCPTools([
+        { name: "search", namespacedName: "myserver/search", description: "New search" },
+        { name: "read", namespacedName: "myserver/read", description: "New read" },
+        { name: "write", namespacedName: "myserver/write", description: "New write" },
+      ]);
+
+      const tools = useChatStore.getState().mcpServers[0].tools;
+      expect(tools).toEqual([
+        { name: "search", description: "New search", enabled: false },
+        { name: "read", description: "New read", enabled: true },
+        { name: "write", description: "New write", enabled: true },
+      ]);
+    });
+
+    it("leaves servers untouched when no tools match", () => {
+      const server = createMCPServerState({
+        server: { name: "untouched", type: "http", url: "https://u.example.com", enabled: true },
+        tools: [{ name: "existing-tool", description: "Existing", enabled: true }],
+      });
+      useChatStore.getState().setMCPServers([server]);
+
+      useChatStore.getState().updateMCPTools([
+        { name: "other-tool", namespacedName: "other-server/other-tool", description: "Other" },
+      ]);
+
+      // Server reference should be unchanged (returned as-is)
+      expect(useChatStore.getState().mcpServers[0].tools).toEqual([
+        { name: "existing-tool", description: "Existing", enabled: true },
+      ]);
+    });
   });
 });
