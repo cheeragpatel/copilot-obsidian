@@ -15,10 +15,12 @@ interface ChatState {
   conversations: ConversationMeta[];
   discoveredAgents: CustomAgentEntry[];
   mcpServers: MCPServerState[];
+  _loadingTimeoutId: number | undefined;
 }
 
 interface ChatActions {
   addMessage: (message: ChatMessage) => void;
+  removeLastAssistantMessage: () => void;
   updateLastAssistantMessage: (content: string) => void;
   appendToLastAssistantMessage: (delta: string) => void;
   setLastMessageStreaming: (isStreaming: boolean) => void;
@@ -31,6 +33,7 @@ interface ChatActions {
   setModel: (model: string) => void;
   setAvailableModels: (models: { id: string; name: string }[]) => void;
   setLoading: (loading: boolean) => void;
+  setLoadingWithTimeout: (timeout?: number) => () => void;
   setError: (error: string | null) => void;
   setSessionId: (id: string | null) => void;
   setAgent: (agent: string | null) => void;
@@ -90,6 +93,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   conversations: [],
   discoveredAgents: [],
   mcpServers: [],
+  _loadingTimeoutId: undefined,
 
   // Actions
   addMessage: (message) =>
@@ -97,6 +101,16 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       messages: [...state.messages, message],
       error: null,
     })),
+
+  removeLastAssistantMessage: () =>
+    set((state) => {
+      const idx = [...state.messages].reverse().findIndex((m) => m.role === "assistant");
+      if (idx === -1) return state;
+      const realIdx = state.messages.length - 1 - idx;
+      const messages = [...state.messages];
+      messages.splice(realIdx, 1);
+      return { messages };
+    }),
 
   updateLastAssistantMessage: (content) =>
     set((state) => {
@@ -198,13 +212,44 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
 
   setAvailableModels: (models) => set({ availableModels: models }),
 
-  setLoading: (loading) => set({ isLoading: loading }),
+  setLoading: (loading) => {
+    if (!loading) {
+      const tid = get()._loadingTimeoutId;
+      if (tid) clearTimeout(tid);
+    }
+    set({ isLoading: loading, ...(!loading ? { _loadingTimeoutId: undefined } : {}) });
+  },
+
+  setLoadingWithTimeout: (timeout = 30000) => {
+    const existingTimeout = get()._loadingTimeoutId;
+    if (existingTimeout) clearTimeout(existingTimeout);
+
+    const timeoutId = setTimeout(() => {
+      if (get().isLoading) {
+        set({ isLoading: false, error: "Request timed out. Please try again.", _loadingTimeoutId: undefined });
+      }
+    }, timeout);
+
+    set({ isLoading: true, _loadingTimeoutId: timeoutId as unknown as number });
+    return () => {
+      clearTimeout(timeoutId);
+      set({ _loadingTimeoutId: undefined });
+    };
+  },
 
   setError: (error) => set({ error }),
 
   setSessionId: (id) => set({ currentSessionId: id }),
 
-  setAgent: (agent) => set({ selectedAgent: agent }),
+  setAgent: (agentName) => {
+    if (agentName === null) {
+      set({ selectedAgent: null });
+      return;
+    }
+    const state = get();
+    const exists = state.discoveredAgents.some((a) => a.name === agentName);
+    set({ selectedAgent: exists ? agentName : null });
+  },
 
   setConversations: (conversations) => set({ conversations }),
 
@@ -213,30 +258,35 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   setMCPServers: (servers) => set({ mcpServers: servers }),
 
   updateMCPTools: (discoveredTools) =>
-    set((state) => ({
-      mcpServers: state.mcpServers.map((serverState) => {
-        const serverTools = discoveredTools
-          .filter((tool) => getToolServerName(tool.namespacedName) === serverState.server.name)
-          .map((tool) => {
-            const resolvedName = getDiscoveredToolName(tool);
-            const existing = serverState.tools.find((current) =>
-              current.name === tool.name || current.name === resolvedName,
-            );
+    set((state) => {
+      const toolsByServer = new Map<string, typeof discoveredTools>();
+      for (const tool of discoveredTools) {
+        const serverName = getToolServerName(tool.namespacedName);
+        if (!serverName) continue;
+        if (!toolsByServer.has(serverName)) toolsByServer.set(serverName, []);
+        toolsByServer.get(serverName)!.push(tool);
+      }
 
+      return {
+        mcpServers: state.mcpServers.map((serverState) => {
+          const serverTools = toolsByServer.get(serverState.server.name) || [];
+          if (serverTools.length === 0) return serverState;
+
+          const existingByName = new Map(serverState.tools.map((t) => [t.name, t]));
+
+          const tools = serverTools.map((tool) => {
+            const resolvedName = getDiscoveredToolName(tool);
+            const existing = existingByName.get(tool.name) || existingByName.get(resolvedName);
             return {
               name: resolvedName,
               description: tool.description || existing?.description,
-              enabled: existing?.enabled ?? true,
+              enabled: existing ? existing.enabled : true,
             };
           });
-
-        if (serverTools.length > 0) {
-          return { ...serverState, tools: serverTools };
-        }
-
-        return serverState;
-      }),
-    })),
+          return { ...serverState, tools };
+        }),
+      };
+    }),
 
   toggleMCP: (name) =>
     set((state) => ({

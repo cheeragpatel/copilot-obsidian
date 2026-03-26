@@ -42,6 +42,9 @@ describe("AgentPicker", () => {
 
   it("updates the store when selecting an agent", async () => {
     const user = userEvent.setup();
+    useChatStore.setState({
+      discoveredAgents: [createAgent("writer")],
+    });
 
     render(<AgentPicker agents={[createAgent("writer")]} />);
 
