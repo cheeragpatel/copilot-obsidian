@@ -99,4 +99,37 @@ describe("MCPPicker", () => {
 
     expect(screen.queryByText("MCP Servers")).not.toBeInTheDocument();
   });
+
+  it("renders server with no tools", async () => {
+    const user = userEvent.setup();
+
+    useChatStore.setState({
+      ...baseState,
+      mcpServers: [createMCPServer({ tools: [] })],
+    });
+
+    render(<MCPPicker />);
+
+    await user.click(screen.getByRole("button", { name: "Configure MCP servers" }));
+
+    expect(screen.getByRole("checkbox", { name: /^docs$/i })).toBeInTheDocument();
+  });
+
+  it("toggle server updates enabled state", async () => {
+    const user = userEvent.setup();
+    const onMCPChange = vi.fn();
+
+    useChatStore.setState({
+      ...baseState,
+      mcpServers: [createMCPServer()],
+    });
+
+    render(<MCPPicker onMCPChange={onMCPChange} />);
+
+    await user.click(screen.getByRole("button", { name: "Configure MCP servers" }));
+    await user.click(screen.getByRole("checkbox", { name: /^docs$/i }));
+
+    expect(useChatStore.getState().mcpServers[0].enabled).toBe(false);
+    expect(onMCPChange).toHaveBeenCalled();
+  });
 });

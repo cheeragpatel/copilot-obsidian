@@ -463,4 +463,64 @@ describe("createVaultTools", () => {
       expect(mockApp.metadataCache.getFileCache).not.toHaveBeenCalled();
     });
   });
+
+  describe("edge cases", () => {
+    it("search_vault handles regex special characters in query", async () => {
+      const file = new TFile("notes/regex-test.md");
+      mockApp.vault.getMarkdownFiles.mockReturnValue([file]);
+      mockApp.vault.cachedRead.mockResolvedValue("Content with [brackets] and (parens) and * and . chars");
+
+      const searchVault = getTool("search_vault");
+
+      // These characters are regex-special but should be treated as literal text
+      for (const query of ["[brackets]", "(parens)", "*", "."]) {
+        await expect(searchVault.handler({ query })).resolves.toBeDefined();
+      }
+    });
+
+    it("read_note rejects path traversal attempts", async () => {
+      const readNote = getTool("read_note");
+
+      const result1 = await readNote.handler({ path: "../../etc/passwd" });
+      expect(result1).toEqual({ error: "Invalid path: must be relative to vault root without '..' segments" });
+
+      const result2 = await readNote.handler({ path: "foo/../../../bar" });
+      expect(result2).toEqual({ error: "Invalid path: must be relative to vault root without '..' segments" });
+
+      expect(mockApp.vault.cachedRead).not.toHaveBeenCalled();
+    });
+
+    it("list_notes handles empty folder path", async () => {
+      const rootFile = new TFile("root.md");
+      const nestedFile = new TFile("folder/nested.md");
+      mockApp.vault.getMarkdownFiles.mockReturnValue([rootFile, nestedFile]);
+
+      const listNotes = getTool("list_notes");
+      const result = await listNotes.handler({ folder: "" });
+
+      expect(result.folder).toBe("/");
+      expect(result.count).toBe(1);
+      expect(result.files[0].path).toBe("root.md");
+    });
+
+    it("create_note validates path doesn't contain null bytes", async () => {
+      const createNote = getTool("create_note");
+      const result = await createNote.handler({ path: "notes/bad\0file.md", content: "evil" });
+
+      expect(result).toEqual({ error: "Invalid path: must be relative to vault root without '..' segments" });
+      expect(mockApp.vault.create).not.toHaveBeenCalled();
+    });
+
+    it("search_vault respects limit parameter", async () => {
+      const files = Array.from({ length: 10 }, (_, i) => new TFile(`copilot-note-${i}.md`));
+      mockApp.vault.getMarkdownFiles.mockReturnValue(files);
+      mockApp.vault.cachedRead.mockImplementation(async (file: InstanceType<typeof TFile>) => `Content of ${file.path}`);
+
+      const searchVault = getTool("search_vault");
+      const result = await searchVault.handler({ query: "copilot", limit: 2 });
+
+      expect(result.resultCount).toBe(2);
+      expect(result.results).toHaveLength(2);
+    });
+  });
 });

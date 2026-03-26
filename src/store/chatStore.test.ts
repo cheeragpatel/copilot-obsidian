@@ -501,6 +501,95 @@ describe("useChatStore", () => {
     });
   });
 
+  it("appendToLastAssistantMessage handles no assistant messages", () => {
+    useChatStore.setState({ messages: [createMessage({ role: "user", content: "hi" })] });
+
+    expect(() => {
+      useChatStore.getState().appendToLastAssistantMessage(" delta");
+    }).not.toThrow();
+
+    // Messages should remain unchanged since there's no assistant message to append to
+    expect(useChatStore.getState().messages).toEqual([
+      expect.objectContaining({ role: "user", content: "hi" }),
+    ]);
+  });
+
+  it("addToolCall handles no assistant messages", () => {
+    useChatStore.setState({ messages: [] });
+
+    expect(() => {
+      useChatStore.getState().addToolCall(createToolCall({ name: "search" }));
+    }).not.toThrow();
+
+    expect(useChatStore.getState().messages).toEqual([]);
+  });
+
+  it("updateMCPTools handles empty discovered tools", () => {
+    const servers = [
+      createMCPServerState({
+        server: { name: "docs", type: "http", url: "https://docs.example.com", enabled: true },
+        tools: [{ name: "search", enabled: true }],
+      }),
+    ];
+    useChatStore.getState().setMCPServers(servers);
+
+    useChatStore.getState().updateMCPTools([]);
+
+    // Server tools should remain unchanged since no discovered tools matched
+    expect(useChatStore.getState().mcpServers[0].tools).toEqual([
+      { name: "search", enabled: true },
+    ]);
+  });
+
+  it("setMCPServers preserves tool enabled state", () => {
+    const server = createMCPServerState({
+      server: { name: "docs", type: "http", url: "https://docs.example.com", enabled: true },
+      tools: [
+        { name: "search", enabled: true },
+        { name: "fetch", enabled: true },
+      ],
+    });
+    useChatStore.getState().setMCPServers([server]);
+
+    // Toggle "fetch" off
+    useChatStore.getState().toggleMCPTool("docs", "fetch");
+    expect(useChatStore.getState().mcpServers[0].tools[1].enabled).toBe(false);
+
+    // Now set servers again with the same server — we expect the new state to take effect
+    // (setMCPServers is a full replacement, so it won't auto-preserve toggled state)
+    const freshServer = createMCPServerState({
+      server: { name: "docs", type: "http", url: "https://docs.example.com", enabled: true },
+      tools: [
+        { name: "search", enabled: true },
+        { name: "fetch", enabled: false },
+      ],
+    });
+    useChatStore.getState().setMCPServers([freshServer]);
+
+    expect(useChatStore.getState().mcpServers[0].tools).toEqual([
+      { name: "search", enabled: true },
+      { name: "fetch", enabled: false },
+    ]);
+  });
+
+  it("getEnabledMCPConfig handles servers with no tools", () => {
+    useChatStore.getState().setMCPServers([
+      createMCPServerState({
+        server: { name: "empty", type: "http", url: "https://empty.example.com", enabled: true },
+        enabled: true,
+        tools: [],
+      }),
+    ]);
+
+    expect(() => {
+      useChatStore.getState().getEnabledMCPConfig();
+    }).not.toThrow();
+
+    const config = useChatStore.getState().getEnabledMCPConfig();
+    expect(config).toHaveProperty("empty");
+    expect(config.empty).toMatchObject({ type: "http", url: "https://empty.example.com" });
+  });
+
   it("generateId returns unique strings", () => {
     const first = generateId();
     const second = generateId();

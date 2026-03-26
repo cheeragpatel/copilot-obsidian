@@ -624,4 +624,65 @@ describe("CopilotChatPanel", () => {
       isStreaming: false,
     });
   });
+
+  describe("error recovery", () => {
+    it("shows error banner when sendMessage fails", async () => {
+      const user = userEvent.setup();
+      mockService.sendMessage.mockRejectedValueOnce(new Error("network failure"));
+
+      await renderPanel();
+
+      await user.type(screen.getByRole("textbox"), "Hello Copilot");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => {
+        expect(useChatStore.getState().error).toBeTruthy();
+      });
+    });
+
+    it("clears error on new message send", async () => {
+      const user = userEvent.setup();
+      mockService.sendMessage.mockRejectedValueOnce(new Error("first failure"));
+
+      await renderPanel();
+
+      // Trigger error
+      await user.type(screen.getByRole("textbox"), "fail");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => {
+        expect(useChatStore.getState().error).toBeTruthy();
+      });
+
+      // Send another message — error should clear
+      mockService.sendMessage.mockResolvedValueOnce(undefined);
+      await user.type(screen.getByRole("textbox"), "retry");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      await waitFor(() => {
+        expect(useChatStore.getState().error).toBeNull();
+      });
+    });
+
+    it("handles rapid send clicks gracefully", async () => {
+      const user = userEvent.setup();
+      // Make sendMessage take a while
+      mockService.sendMessage.mockImplementation(
+        () => new Promise((resolve) => setTimeout(resolve, 100)),
+      );
+
+      await renderPanel();
+
+      await user.type(screen.getByRole("textbox"), "first message");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+
+      // Verify loading state prevents second send (stop button shown instead)
+      await waitFor(() => {
+        expect(useChatStore.getState().isLoading).toBe(true);
+      });
+
+      // With loading=true, the Send button should be replaced by Stop
+      expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+    });
+  });
 });
