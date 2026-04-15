@@ -25,21 +25,11 @@ Built on the official [`@github/copilot-sdk`](https://github.com/github/copilot-
 
 > You need a [GitHub Copilot](https://github.com/features/copilot) subscription and the Copilot CLI. See [Prerequisites](#prerequisites) below.
 
-### Option 1: One-line installer (macOS / Linux)
+### Option 1: Community Plugins (recommended)
 
-Open a terminal and run:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/cheeragpatel/copilot-obsidian/main/install.sh | bash
-```
-
-The script auto-detects your Obsidian vault, downloads the latest release, and installs the plugin. If you have multiple vaults it will ask which one to use.
-
-To install into a specific vault:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/cheeragpatel/copilot-obsidian/main/install.sh | bash -s -- ~/Documents/Obsidian/MyVault
-```
+1. Open Obsidian → **Settings** → **Community plugins** → **Browse**
+2. Search for **"GitHub Copilot"**
+3. Click **Install**, then **Enable**
 
 ### Option 2: Manual download from GitHub Releases
 
@@ -47,12 +37,12 @@ curl -fsSL https://raw.githubusercontent.com/cheeragpatel/copilot-obsidian/main/
 2. Download these three files: **main.js**, **manifest.json**, **styles.css**
 3. In your vault folder, create a new folder:
    ```
-   <your-vault>/.obsidian/plugins/github-copilot-for-obsidian/
+   <your-vault>/.obsidian/plugins/github-copilot/
    ```
 4. Move the three downloaded files into that folder
-5. Open Obsidian → **Settings** → **Community plugins** → turn off **Restricted mode** → enable **GitHub Copilot for Obsidian**
+5. Open Obsidian → **Settings** → **Community plugins** → turn off **Restricted mode** → enable **GitHub Copilot**
 
-### Option 3: BRAT (auto-updates)
+### Option 3: BRAT (auto-updates for beta releases)
 
 If you use the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) for managing beta plugins:
 
@@ -60,7 +50,13 @@ If you use the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) for m
 2. Enter: `cheeragpatel/copilot-obsidian`
 3. Click **Add Plugin** — BRAT will install it and keep it updated
 
-### Option 4: Build from source
+### Option 4: Shell installer (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cheeragpatel/copilot-obsidian/main/install.sh | bash
+```
+
+### Option 5: Build from source
 
 For developers who want to modify the plugin:
 
@@ -74,8 +70,8 @@ npm run build
 Then copy the built files into your vault:
 
 ```bash
-mkdir -p <VAULT>/.obsidian/plugins/github-copilot-for-obsidian
-cp main.js manifest.json styles.css <VAULT>/.obsidian/plugins/github-copilot-for-obsidian/
+mkdir -p <VAULT>/.obsidian/plugins/github-copilot
+cp main.js manifest.json styles.css <VAULT>/.obsidian/plugins/github-copilot/
 ```
 
 ---
@@ -131,7 +127,7 @@ You can also click the **Copilot icon** in the left ribbon to open the sidebar.
 
 ## Configuration
 
-Open **Settings → GitHub Copilot for Obsidian** to configure:
+Open **Settings → GitHub Copilot** to configure:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
@@ -228,7 +224,7 @@ npm run test:coverage
 ### Symlink for development
 
 ```bash
-ln -s "$(pwd)" <VAULT>/.obsidian/plugins/github-copilot-for-obsidian
+ln -s "$(pwd)" <VAULT>/.obsidian/plugins/github-copilot
 npm run dev
 ```
 
@@ -260,6 +256,17 @@ Obsidian (Electron)
        ├─ PermissionModal (Allow Once / Session / Always)
        └─ SettingsTab
 ```
+
+## Privacy
+
+This plugin connects to GitHub Copilot, a cloud-based AI service. Here is what you should know about how your data is handled:
+
+- **What is sent**: When you send a message or use agent mode, the text of your message (and any attached note content) is sent to GitHub's Copilot API for processing. No data is sent unless you explicitly interact with the chat.
+- **Authentication**: You must sign in with your own GitHub account via the Copilot CLI (`copilot auth login`). The plugin does not store or manage your GitHub credentials directly.
+- **No background data collection**: The plugin does not collect analytics, telemetry, or any data beyond what is needed to fulfill your chat requests.
+- **External process**: The plugin launches the Copilot CLI as a local child process to communicate with GitHub's API. This is why the plugin is **desktop-only** — it requires Node.js and the Copilot CLI binary.
+- **Data retention**: Data sent to GitHub Copilot is subject to [GitHub's privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) and your organization's Copilot policy settings.
+- **Opt-in only**: A paid [GitHub Copilot](https://github.com/features/copilot) subscription is required. The plugin does nothing without it.
 
 ## License
 
