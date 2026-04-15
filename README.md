@@ -25,11 +25,15 @@ Built on the official [`@github/copilot-sdk`](https://github.com/github/copilot-
 
 > You need a [GitHub Copilot](https://github.com/features/copilot) subscription and the Copilot CLI. See [Prerequisites](#prerequisites) below.
 
-### Option 1: Community Plugins (recommended)
+### Option 1: Community Plugins (once the plugin is listed)
+
+Once the plugin is listed in Obsidian's community plugin browser, you will be able to install it this way:
 
 1. Open Obsidian → **Settings** → **Community plugins** → **Browse**
 2. Search for **"GitHub Copilot"**
 3. Click **Install**, then **Enable**
+
+Until then, use **Option 2** or **Option 3** below.
 
 ### Option 2: Manual download from GitHub Releases
 
