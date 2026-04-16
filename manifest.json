@@ -1,10 +1,10 @@
 {
-  "id": "github-copilot",
-  "name": "GitHub Copilot",
-  "version": "0.1.0",
-  "minAppVersion": "1.5.12",
-  "description": "GitHub Copilot integration — chat, agent mode, slash commands, custom agents, and MCP support via the official Copilot SDK",
-  "author": "cheeragpatel",
-  "authorUrl": "https://github.com/cheeragpatel",
-  "isDesktopOnly": true
+	"id": "github-copilot",
+	"name": "GitHub Copilot",
+	"version": "1.0.0",
+	"minAppVersion": "1.5.12",
+	"description": "GitHub Copilot integration — chat, agent mode, slash commands, custom agents, and MCP support via the official Copilot SDK",
+	"author": "cheeragpatel",
+	"authorUrl": "https://github.com/cheeragpatel",
+	"isDesktopOnly": true
 }
