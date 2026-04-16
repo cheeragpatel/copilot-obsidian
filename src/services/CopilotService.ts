@@ -1,4 +1,5 @@
 import * as os from "os";
+import * as path from "path";
 import { CopilotClient, defineTool, SessionEvent } from "@github/copilot-sdk";
 import type { App } from "obsidian";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
@@ -94,16 +95,21 @@ export class CopilotService {
       "/opt/homebrew/bin",
       "/usr/local/bin",
       "/usr/bin",
-      `${home}/.npm-global/bin`,
-      `${home}/.local/bin`,
-      `${home}/.nvm/versions/node/${process.version}/bin`,
-    ].filter(Boolean);
+      path.join(home, ".npm-global", "bin"),
+      path.join(home, ".local", "bin"),
+      path.join(home, ".nvm", "versions", "node", process.version, "bin"),
+    ];
+
+    const trailingSepRe = process.platform === "win32" ? /\\+$/ : /\/+$/;
+    const normalizeEntry = (value: string) => {
+      const normalized = path.normalize(value).replace(trailingSepRe, "");
+      return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+    };
 
     const currentPath = process.env.PATH || "";
-    const currentEntries = currentPath.split(pathDelimiter).filter(Boolean);
-    const normalizePath = (value: string) => process.platform === "win32" ? value.toLowerCase() : value;
-    const existingEntries = new Set(currentEntries.map(normalizePath));
-    const missing = extraPaths.filter((entry) => !existingEntries.has(normalizePath(entry)));
+    const currentEntries = currentPath.split(pathDelimiter);
+    const existingEntries = new Set(currentEntries.map(normalizeEntry));
+    const missing = extraPaths.filter((entry) => !existingEntries.has(normalizeEntry(entry)));
     if (missing.length > 0) {
       process.env.PATH = [...missing, ...currentEntries].join(pathDelimiter);
     }

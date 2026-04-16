@@ -96,16 +96,16 @@ export class ConfigDiscovery {
    *   .copilot/skills/             — personal skills
    *   .github/copilot/mcp.json     — repo MCP servers
    *   .copilot/mcp.json            — personal MCP servers
-  *   $HOME/.copilot/mcp-config.json — global Copilot CLI MCP servers (all OS)
-  *   $HOME/.copilot/mcp.json        — global Copilot MCP servers (all OS)
-  *   $HOME/.copilot/config.json     — global Copilot config with mcpServers (all OS)
-   *   ~/Library/Application Support/github-copilot/mcp.json — macOS global MCP servers
-   *   ~/.config/github-copilot/mcp.json — Linux global MCP servers
+   *   $HOME/.copilot/mcp-config.json — global Copilot CLI MCP servers (all OS)
+   *   $HOME/.copilot/mcp.json        — global Copilot MCP servers (all OS)
+   *   $HOME/.copilot/config.json     — global Copilot config with mcpServers (all OS)
+   *   $HOME/Library/Application Support/github-copilot/mcp.json — macOS global MCP servers
+   *   $HOME/.config/github-copilot/mcp.json — Linux global MCP servers
    *   .github/copilot-instructions.md — repo instructions
    *   .copilot/instructions/       — personal instruction files (*.md)
    *   .copilot/agents/             — personal agents (*.agent.md)
    *   .github/agents/              — repo agents (*.agent.md or *.md)
-   *   ~/.copilot/agents/           — global personal agents (filesystem)
+   *   $HOME/.copilot/agents/       — global personal agents (filesystem)
    */
   async discover(): Promise<DiscoveredConfig> {
     const [skills, mcpServers, instructions, agents] = await Promise.all([
