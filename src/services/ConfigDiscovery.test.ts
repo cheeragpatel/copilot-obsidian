@@ -373,4 +373,64 @@ describe("ConfigDiscovery", () => {
     );
     expect(mockApp.vault.getAbstractFileByPath).toHaveBeenCalledWith(".copilot/instructions");
   });
+
+  it("discovers global agents using os.homedir() for cross-platform home resolution", async () => {
+    const homeRoot = os.homedir() || "/tmp/tester";
+    const agentContent = [
+      "---",
+      'name: "reviewer"',
+      'description: "Reviews code"',
+      "---",
+      "You are a code reviewer.",
+    ].join("\n");
+
+    const fsMock = mockHomeFiles({});
+    fsMock.existsSync.mockImplementation((candidate: string) => {
+      return candidate === path.join(homeRoot, ".copilot", "agents");
+    });
+    fsMock.readdirSync.mockImplementation((dir: string) => {
+      if (dir === path.join(homeRoot, ".copilot", "agents")) {
+        return ["reviewer.agent.md"];
+      }
+      return [];
+    });
+    fsMock.statSync.mockImplementation((p: string) => ({
+      isDirectory: () => p === path.join(homeRoot, ".copilot", "agents"),
+    }));
+    fsMock.readFileSync.mockImplementation((p: string) => {
+      if (p === path.join(homeRoot, ".copilot", "agents", "reviewer.agent.md")) {
+        return agentContent;
+      }
+      throw new Error("Not found");
+    });
+
+    const discovery = new ConfigDiscovery(mockApp as any);
+    const config = await discovery.discover();
+
+    expect(config.agents).toEqual([
+      expect.objectContaining({
+        name: "reviewer",
+        description: "Reviews code",
+      }),
+    ]);
+  });
+
+  it("probes home MCP paths rooted at os.homedir() for cross-platform correctness", async () => {
+    const homeRoot = os.homedir() || "/tmp/tester";
+    const expectedPath = path.join(homeRoot, ".copilot", "mcp.json");
+
+    const fsMock = mockHomeFiles({
+      [expectedPath]: JSON.stringify({
+        servers: { cross: { type: "http", url: "https://cross.example.com" } },
+      }),
+    });
+
+    const discovery = new ConfigDiscovery(mockApp as any);
+    const config = await discovery.discover();
+
+    expect(fsMock.existsSync).toHaveBeenCalledWith(expectedPath);
+    expect(config.mcpServers).toEqual([
+      expect.objectContaining({ name: "cross", url: "https://cross.example.com" }),
+    ]);
+  });
 });

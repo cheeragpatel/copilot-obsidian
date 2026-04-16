@@ -8,7 +8,11 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -17,8 +21,32 @@ jobs:
           node-version: 20
           cache: npm
 
+      # npm ci fails cross-platform because the lockfile lacks binaries for
+      # all OSes (see copilot-instructions.md). Use npm install instead.
       - run: npm install
 
       - run: npm run build
 
       - run: npm test
+
+      - name: Validate release artifacts
+        shell: bash
+        run: |
+          # Ensure all required plugin files were produced
+          for f in main.js manifest.json styles.css; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing release artifact: $f"
+              exit 1
+            fi
+          done
+          # Validate manifest.json has required Obsidian plugin fields
+          node -e "
+            const m = require('./manifest.json');
+            const required = ['id', 'name', 'version', 'minAppVersion'];
+            const missing = required.filter(k => !m[k]);
+            if (missing.length) {
+              console.error('manifest.json missing fields:', missing.join(', '));
+              process.exit(1);
+            }
+            console.log('Artifacts OK — id:', m.id, 'version:', m.version);
+          "

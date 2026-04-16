@@ -1,3 +1,4 @@
+import * as os from "os";
 import { CopilotClient, defineTool, SessionEvent } from "@github/copilot-sdk";
 import type { App } from "obsidian";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
@@ -52,7 +53,7 @@ export class CopilotService {
       return configured;
     }
 
-    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const home = os.homedir() || process.env.HOME || process.env.USERPROFILE || "";
 
     // Common install locations on macOS / Linux / Windows
     const candidates = [
@@ -87,7 +88,8 @@ export class CopilotService {
    * `#!/usr/bin/env node` shebang can find the node binary.
    */
   private ensurePath(): void {
-    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const home = os.homedir() || process.env.HOME || process.env.USERPROFILE || "";
+    const pathDelimiter = process.platform === "win32" ? ";" : ":";
     const extraPaths = [
       "/opt/homebrew/bin",
       "/usr/local/bin",
@@ -98,9 +100,12 @@ export class CopilotService {
     ].filter(Boolean);
 
     const currentPath = process.env.PATH || "";
-    const missing = extraPaths.filter((p) => !currentPath.includes(p));
+    const currentEntries = currentPath.split(pathDelimiter).filter(Boolean);
+    const normalizePath = (value: string) => process.platform === "win32" ? value.toLowerCase() : value;
+    const existingEntries = new Set(currentEntries.map(normalizePath));
+    const missing = extraPaths.filter((entry) => !existingEntries.has(normalizePath(entry)));
     if (missing.length > 0) {
-      process.env.PATH = [...missing, currentPath].join(":");
+      process.env.PATH = [...missing, ...currentEntries].join(pathDelimiter);
     }
   }
 
