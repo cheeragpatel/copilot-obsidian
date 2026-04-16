@@ -1,5 +1,5 @@
 {
-  "name": "github-copilot-for-obsidian",
+  "name": "github-copilot",
   "version": "0.1.0",
   "description": "GitHub Copilot integration for Obsidian using the official Copilot SDK",
   "main": "main.js",
@@ -31,13 +31,13 @@
     "builtin-modules": "3.3.0",
     "esbuild": "0.17.3",
     "jsdom": "^28.1.0",
-    "obsidian": "latest",
+    "obsidian": "^1.12.3",
     "tslib": "2.4.0",
     "typescript": "5.4.5",
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "@github/copilot-sdk": "latest",
+    "@github/copilot-sdk": "^0.1.32",
     "@types/react-syntax-highlighter": "^15.5.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
