@@ -11,7 +11,7 @@
 set -euo pipefail
 
 REPO="cheeragpatel/copilot-obsidian"
-PLUGIN_ID="github-copilot-for-obsidian"
+PLUGIN_ID="github-copilot"
 FILES="main.js manifest.json styles.css"
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -104,7 +104,7 @@ echo "Next steps:"
 echo "  1. Open Obsidian"
 echo "  2. Go to Settings → Community plugins"
 echo "  3. Turn off 'Restricted mode' if prompted"
-echo "  4. Enable 'GitHub Copilot for Obsidian'"
+echo "  4. Enable 'GitHub Copilot'"
 echo "  5. Open the sidebar: Cmd/Ctrl+P → 'Open Copilot Chat'"
 echo ""
 bold "Prerequisites:"

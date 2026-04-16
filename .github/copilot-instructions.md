@@ -142,7 +142,7 @@ git worktree remove ../copilot-obsidian-feat-b
 ### To local vault (development)
 ```bash
 npm run build
-cp main.js styles.css manifest.json /path/to/vault/.obsidian/plugins/github-copilot-for-obsidian/
+cp main.js styles.css manifest.json /path/to/vault/.obsidian/plugins/github-copilot/
 ```
 
 ### GitHub Release
