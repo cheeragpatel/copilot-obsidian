@@ -91,14 +91,20 @@ export class CopilotService {
   private ensurePath(): void {
     const home = os.homedir();
     const pathDelimiter = process.platform === "win32" ? ";" : ":";
+    const homeBasedExtraPaths =
+      home && path.isAbsolute(home)
+        ? [
+            path.join(home, ".npm-global", "bin"),
+            path.join(home, ".local", "bin"),
+            path.join(home, ".nvm", "versions", "node", process.version, "bin"),
+          ]
+        : [];
     const extraPaths = [
       "/opt/homebrew/bin",
       "/usr/local/bin",
       "/usr/bin",
-      path.join(home, ".npm-global", "bin"),
-      path.join(home, ".local", "bin"),
-      path.join(home, ".nvm", "versions", "node", process.version, "bin"),
-    ];
+      ...homeBasedExtraPaths,
+    ].filter((entry) => path.isAbsolute(entry));
 
     const trailingSepRe = process.platform === "win32" ? /\\+$/ : /\/+$/;
     const normalizeEntry = (value: string) => {

@@ -155,6 +155,9 @@ export class ConfigDiscovery {
       const fs = window.require("fs");
       const path = window.require("path");
       const home = os.homedir();
+      if (!home || !path.isAbsolute(home)) {
+        return servers;
+      }
 
       // Copilot's primary global config lives under $HOME/.copilot on all platforms.
       const homeCandidates = [
