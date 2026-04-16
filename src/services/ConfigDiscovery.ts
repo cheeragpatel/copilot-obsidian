@@ -297,6 +297,9 @@ export class ConfigDiscovery {
       const fs = window.require("fs");
       const path = window.require("path");
       const home = os.homedir();
+      if (!home || !path.isAbsolute(home)) {
+        return agents;
+      }
       const globalAgentDirs = [
         path.join(home, ".copilot", "agents"),
       ];
