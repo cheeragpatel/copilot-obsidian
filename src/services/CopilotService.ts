@@ -53,7 +53,7 @@ export class CopilotService {
       return configured;
     }
 
-    const home = os.homedir() || process.env.HOME || process.env.USERPROFILE || "";
+    const home = os.homedir();
 
     // Common install locations on macOS / Linux / Windows
     const candidates = [
@@ -88,7 +88,7 @@ export class CopilotService {
    * `#!/usr/bin/env node` shebang can find the node binary.
    */
   private ensurePath(): void {
-    const home = os.homedir() || process.env.HOME || process.env.USERPROFILE || "";
+    const home = os.homedir();
     const pathDelimiter = process.platform === "win32" ? ";" : ":";
     const extraPaths = [
       "/opt/homebrew/bin",

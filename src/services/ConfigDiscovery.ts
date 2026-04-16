@@ -154,11 +154,7 @@ export class ConfigDiscovery {
     try {
       const fs = window.require("fs");
       const path = window.require("path");
-      const home = os.homedir() || process.env.HOME || process.env.USERPROFILE || "";
-
-      if (!home) {
-        return servers;
-      }
+      const home = os.homedir();
 
       // Copilot's primary global config lives under $HOME/.copilot on all platforms.
       const homeCandidates = [
@@ -297,7 +293,7 @@ export class ConfigDiscovery {
     try {
       const fs = window.require("fs");
       const path = window.require("path");
-      const home = os.homedir() || process.env.HOME || process.env.USERPROFILE || "";
+      const home = os.homedir();
       const globalAgentDirs = [
         path.join(home, ".copilot", "agents"),
       ];

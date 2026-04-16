@@ -39,8 +39,8 @@ describe("ConfigDiscovery", () => {
     const fs = {
       existsSync: vi.fn((candidate: string) => Object.prototype.hasOwnProperty.call(files, candidate)),
       readFileSync: vi.fn((candidate: string) => files[candidate]),
-      readdirSync: vi.fn(() => []),
-      statSync: vi.fn(() => ({ isDirectory: () => false })),
+      readdirSync: vi.fn((_dir: string) => [] as string[]),
+      statSync: vi.fn((_p: string) => ({ isDirectory: (): boolean => false })),
     };
 
     (window as Window & { require?: (name: string) => unknown }).require = vi.fn((name: string) => {
