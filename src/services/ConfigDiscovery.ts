@@ -96,16 +96,16 @@ export class ConfigDiscovery {
    *   .copilot/skills/             — personal skills
    *   .github/copilot/mcp.json     — repo MCP servers
    *   .copilot/mcp.json            — personal MCP servers
-   *   ~/.copilot/mcp-config.json   — global Copilot CLI MCP servers
-   *   ~/.copilot/mcp.json          — global Copilot MCP servers
-   *   ~/.copilot/config.json       — global Copilot config with mcpServers
-   *   ~/Library/Application Support/github-copilot/mcp.json — macOS global MCP servers
-   *   ~/.config/github-copilot/mcp.json — Linux global MCP servers
+   *   $HOME/.copilot/mcp-config.json — global Copilot CLI MCP servers (all OS)
+   *   $HOME/.copilot/mcp.json        — global Copilot MCP servers (all OS)
+   *   $HOME/.copilot/config.json     — global Copilot config with mcpServers (all OS)
+   *   $HOME/Library/Application Support/github-copilot/mcp.json — macOS global MCP servers
+   *   $HOME/.config/github-copilot/mcp.json — Linux global MCP servers
    *   .github/copilot-instructions.md — repo instructions
    *   .copilot/instructions/       — personal instruction files (*.md)
    *   .copilot/agents/             — personal agents (*.agent.md)
    *   .github/agents/              — repo agents (*.agent.md or *.md)
-   *   ~/.copilot/agents/           — global personal agents (filesystem)
+   *   $HOME/.copilot/agents/       — global personal agents (filesystem)
    */
   async discover(): Promise<DiscoveredConfig> {
     const [skills, mcpServers, instructions, agents] = await Promise.all([
@@ -154,21 +154,25 @@ export class ConfigDiscovery {
     try {
       const fs = window.require("fs");
       const path = window.require("path");
-      const home = os.homedir() || process.env.HOME || process.env.USERPROFILE || "";
-
-      if (!home) {
+      const home = os.homedir();
+      if (!home || !path.isAbsolute(home)) {
         return servers;
       }
 
+      // Copilot's primary global config lives under $HOME/.copilot on all platforms.
       const homeCandidates = [
         path.join(home, ".copilot", "mcp-config.json"),
         path.join(home, ".copilot", "mcp.json"),
         path.join(home, ".copilot", "config.json"),
-        path.join(home, "Library", "Application Support", "github-copilot", "mcp.json"),
-        path.join(home, ".config", "github-copilot", "mcp.json"),
       ];
 
-      for (const candidate of homeCandidates) {
+      // Legacy platform-specific fallback locations used by some setups.
+      const legacyCandidates = [
+        path.join(home, "Library", "Application Support", "github-copilot", "mcp.json"),
+        path.join(home, ".config", "github-copilot", "mcp.json"),
+      ].filter(Boolean);
+
+      for (const candidate of [...homeCandidates, ...legacyCandidates]) {
         if (!fs.existsSync(candidate)) {
           continue;
         }
@@ -288,11 +292,14 @@ export class ConfigDiscovery {
       }
     }
 
-    // 2. Global personal agents from ~/.copilot/agents/
+    // 2. Global personal agents from $HOME/.copilot/agents/
     try {
       const fs = window.require("fs");
       const path = window.require("path");
-      const home = process.env.HOME || process.env.USERPROFILE || "";
+      const home = os.homedir();
+      if (!home || !path.isAbsolute(home)) {
+        return agents;
+      }
       const globalAgentDirs = [
         path.join(home, ".copilot", "agents"),
       ];

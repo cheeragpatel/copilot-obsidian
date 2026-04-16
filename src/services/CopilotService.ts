@@ -1,3 +1,5 @@
+import * as os from "os";
+import * as path from "path";
 import { CopilotClient, defineTool, SessionEvent } from "@github/copilot-sdk";
 import type { App } from "obsidian";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
@@ -52,7 +54,7 @@ export class CopilotService {
       return configured;
     }
 
-    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const home = os.homedir();
 
     // Common install locations on macOS / Linux / Windows
     const candidates = [
@@ -87,20 +89,35 @@ export class CopilotService {
    * `#!/usr/bin/env node` shebang can find the node binary.
    */
   private ensurePath(): void {
-    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const home = os.homedir();
+    const pathDelimiter = process.platform === "win32" ? ";" : ":";
+    const homeBasedExtraPaths =
+      home && path.isAbsolute(home)
+        ? [
+            path.join(home, ".npm-global", "bin"),
+            path.join(home, ".local", "bin"),
+            path.join(home, ".nvm", "versions", "node", process.version, "bin"),
+          ]
+        : [];
     const extraPaths = [
       "/opt/homebrew/bin",
       "/usr/local/bin",
       "/usr/bin",
-      `${home}/.npm-global/bin`,
-      `${home}/.local/bin`,
-      `${home}/.nvm/versions/node/${process.version}/bin`,
-    ].filter(Boolean);
+      ...homeBasedExtraPaths,
+    ].filter((entry) => path.isAbsolute(entry));
+
+    const trailingSepRe = process.platform === "win32" ? /\\+$/ : /\/+$/;
+    const normalizeEntry = (value: string) => {
+      const normalized = path.normalize(value).replace(trailingSepRe, "");
+      return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+    };
 
     const currentPath = process.env.PATH || "";
-    const missing = extraPaths.filter((p) => !currentPath.includes(p));
+    const currentEntries = currentPath.split(pathDelimiter);
+    const existingEntries = new Set(currentEntries.map(normalizeEntry));
+    const missing = extraPaths.filter((entry) => !existingEntries.has(normalizeEntry(entry)));
     if (missing.length > 0) {
-      process.env.PATH = [...missing, currentPath].join(":");
+      process.env.PATH = [...missing, ...currentEntries].join(pathDelimiter);
     }
   }
 
