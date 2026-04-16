@@ -11,7 +11,7 @@
 set -euo pipefail
 
 REPO="cheeragpatel/copilot-obsidian"
-PLUGIN_ID="github-copilot"
+PLUGIN_ID="github-copilot-chat"
 FILES="main.js manifest.json styles.css"
 
 # ── Helpers ──────────────────────────────────────────────────

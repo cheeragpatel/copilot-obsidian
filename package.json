@@ -1,5 +1,5 @@
 {
-  "name": "github-copilot",
+  "name": "github-copilot-chat",
   "version": "1.0.0",
   "description": "GitHub Copilot integration for Obsidian using the official Copilot SDK",
   "main": "main.js",

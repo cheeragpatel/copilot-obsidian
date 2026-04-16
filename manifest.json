@@ -1,5 +1,5 @@
 {
-	"id": "github-copilot",
+	"id": "github-copilot-chat",
 	"name": "GitHub Copilot",
 	"version": "1.0.0",
 	"minAppVersion": "1.5.12",

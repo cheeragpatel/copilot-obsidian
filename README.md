@@ -41,7 +41,7 @@ Until then, use **Option 2** or **Option 3** below.
 2. Download these three files: **main.js**, **manifest.json**, **styles.css**
 3. In your vault folder, create a new folder:
    ```
-   <your-vault>/.obsidian/plugins/github-copilot/
+   <your-vault>/.obsidian/plugins/github-copilot-chat/
    ```
 4. Move the three downloaded files into that folder
 5. Open Obsidian → **Settings** → **Community plugins** → turn off **Restricted mode** → enable **GitHub Copilot**
@@ -74,8 +74,8 @@ npm run build
 Then copy the built files into your vault:
 
 ```bash
-mkdir -p <VAULT>/.obsidian/plugins/github-copilot
-cp main.js manifest.json styles.css <VAULT>/.obsidian/plugins/github-copilot/
+mkdir -p <VAULT>/.obsidian/plugins/github-copilot-chat
+cp main.js manifest.json styles.css <VAULT>/.obsidian/plugins/github-copilot-chat/
 ```
 
 ---
@@ -228,7 +228,7 @@ npm run test:coverage
 ### Symlink for development
 
 ```bash
-ln -s "$(pwd)" <VAULT>/.obsidian/plugins/github-copilot
+ln -s "$(pwd)" <VAULT>/.obsidian/plugins/github-copilot-chat
 npm run dev
 ```
 
