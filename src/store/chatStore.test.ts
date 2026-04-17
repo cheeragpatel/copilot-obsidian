@@ -14,7 +14,9 @@ const initialState = {
   conversations: [] as ConversationMeta[],
   availableModels: [] as { id: string; name: string }[],
   discoveredAgents: [] as CustomAgentEntry[],
+  availableAgents: [] as CustomAgentEntry[],
   mcpServers: [] as MCPServerState[],
+  toolSelectionInitialized: {} as Record<string, boolean>,
   _loadingTimeoutId: undefined as number | undefined,
 };
 
@@ -735,6 +737,251 @@ describe("useChatStore", () => {
       useChatStore.getState().setAgent("docs-writer");
 
       expect(useChatStore.getState().selectedAgent).toBe("docs-writer");
+    });
+  });
+
+  describe("Wave 1 fixes", () => {
+    describe("C1 — incremental MCP tool discovery", () => {
+      it("replaceMCPTools is exported and aliases updateMCPTools (replace semantics)", () => {
+        useChatStore.getState().setMCPServers([
+          createMCPServerState({
+            server: { name: "ctx7", type: "http", url: "https://x", enabled: true },
+            tools: [
+              { name: "alpha", enabled: true },
+              { name: "beta", enabled: false },
+            ],
+          }),
+        ]);
+
+        // replaceMCPTools wipes any tools not in the discovered list (per server).
+        useChatStore.getState().replaceMCPTools([
+          { name: "alpha", namespacedName: "ctx7/alpha", description: "A" },
+        ]);
+
+        expect(useChatStore.getState().mcpServers[0].tools).toEqual([
+          { name: "alpha", description: "A", enabled: true },
+        ]);
+      });
+
+      it("mergeDiscoveredMCPTools adds new tools without wiping existing ones", () => {
+        useChatStore.getState().setMCPServers([
+          createMCPServerState({
+            server: { name: "ctx7", type: "http", url: "https://x", enabled: true },
+            tools: [
+              { name: "alpha", description: "A old", enabled: false },
+              { name: "beta", description: "B old", enabled: true },
+            ],
+          }),
+        ]);
+
+        useChatStore.getState().mergeDiscoveredMCPTools("ctx7", [
+          { name: "alpha", namespacedName: "ctx7/alpha", description: "A new" },
+          { name: "gamma", namespacedName: "ctx7/gamma", description: "G new" },
+        ]);
+
+        const tools = useChatStore.getState().mcpServers[0].tools;
+        expect(tools).toEqual([
+          // alpha kept its disabled state; description refreshed
+          { name: "alpha", description: "A new", enabled: false },
+          // beta untouched
+          { name: "beta", description: "B old", enabled: true },
+          // gamma added (new tools default to enabled)
+          { name: "gamma", description: "G new", enabled: true },
+        ]);
+      });
+
+      it("mergeDiscoveredMCPTool merges a single tool (per-event call site)", () => {
+        useChatStore.getState().setMCPServers([
+          createMCPServerState({
+            server: { name: "ctx7", type: "http", url: "https://x", enabled: true },
+            tools: [{ name: "alpha", enabled: true }],
+          }),
+        ]);
+
+        useChatStore.getState().mergeDiscoveredMCPTool("ctx7", {
+          name: "beta",
+          namespacedName: "ctx7/beta",
+          description: "B",
+        });
+
+        expect(useChatStore.getState().mcpServers[0].tools).toEqual([
+          { name: "alpha", description: undefined, enabled: true },
+          { name: "beta", description: "B", enabled: true },
+        ]);
+      });
+
+      it("mergeDiscoveredMCPTools is a no-op for unknown server", () => {
+        useChatStore.getState().setMCPServers([
+          createMCPServerState({
+            server: { name: "ctx7", type: "http", url: "https://x", enabled: true },
+            tools: [{ name: "alpha", enabled: true }],
+          }),
+        ]);
+
+        useChatStore.getState().mergeDiscoveredMCPTools("nope", [
+          { name: "x", namespacedName: "nope/x", description: "X" },
+        ]);
+
+        expect(useChatStore.getState().mcpServers[0].tools).toEqual([
+          { name: "alpha", description: undefined, enabled: true },
+        ]);
+      });
+    });
+
+    describe("C2 — tool calls correlated by id", () => {
+      it("updateToolCallById finds tool call by id across messages", () => {
+        const tcA = createToolCall({ id: "id-a", name: "search", status: "running" });
+        const tcB = createToolCall({ id: "id-b", name: "search", status: "running" });
+        const earlier = createMessage({ role: "assistant", toolCalls: [tcA] });
+        const later = createMessage({ role: "assistant", toolCalls: [tcB] });
+
+        useChatStore.setState({ messages: [earlier, createMessage({ role: "user" }), later] });
+        useChatStore.getState().updateToolCallById("id-a", { status: "complete", result: "done-a" });
+
+        const state = useChatStore.getState();
+        expect(state.messages[0].toolCalls?.[0]).toMatchObject({
+          id: "id-a",
+          status: "complete",
+          result: "done-a",
+        });
+        // The second tool call (same name, different id) is untouched.
+        expect(state.messages[2].toolCalls?.[0]).toMatchObject({
+          id: "id-b",
+          status: "running",
+        });
+      });
+
+      it("completeToolCallById marks complete on success and error on failure", () => {
+        const tc = createToolCall({ id: "id-x", name: "search", status: "running" });
+        useChatStore.setState({
+          messages: [createMessage({ role: "assistant", toolCalls: [tc] })],
+        });
+
+        useChatStore.getState().completeToolCallById("id-x", true, "ok");
+        expect(useChatStore.getState().messages[0].toolCalls?.[0]).toMatchObject({
+          status: "complete",
+          result: "ok",
+        });
+
+        const tc2 = createToolCall({ id: "id-y", name: "fetch", status: "running" });
+        useChatStore.setState({
+          messages: [createMessage({ role: "assistant", toolCalls: [tc2] })],
+        });
+        useChatStore.getState().completeToolCallById("id-y", false, "boom");
+        expect(useChatStore.getState().messages[0].toolCalls?.[0]).toMatchObject({
+          status: "error",
+          result: "boom",
+        });
+      });
+
+      it("legacy updateToolCall(name, ...) still works for callers without ids", () => {
+        const tc = createToolCall({ name: "search", status: "running" });
+        useChatStore.setState({
+          messages: [createMessage({ role: "assistant", toolCalls: [tc] })],
+        });
+        useChatStore.getState().updateToolCall("search", "complete", "done");
+        expect(useChatStore.getState().messages[0].toolCalls?.[0]).toMatchObject({
+          status: "complete",
+          result: "done",
+        });
+      });
+
+      it("addToolCallWithId behaves like addToolCall (alias)", () => {
+        useChatStore.setState({
+          messages: [createMessage({ role: "assistant", toolCalls: [] })],
+        });
+        const tc = createToolCall({ id: "abc", name: "search" });
+        useChatStore.getState().addToolCallWithId(tc);
+        expect(useChatStore.getState().messages[0].toolCalls).toEqual([tc]);
+      });
+    });
+
+    describe("C3 — agent selection validates against availableAgents", () => {
+      it("setAvailableAgents populates state", () => {
+        const agents = [createAgent("from-settings")];
+        useChatStore.getState().setAvailableAgents(agents);
+        expect(useChatStore.getState().availableAgents).toEqual(agents);
+      });
+
+      it("setAgent accepts an agent that is only in availableAgents (settings)", () => {
+        useChatStore.getState().setAvailableAgents([createAgent("from-settings")]);
+        useChatStore.getState().setAgent("from-settings");
+        expect(useChatStore.getState().selectedAgent).toBe("from-settings");
+      });
+
+      it("setAgent accepts an agent that is only in discoveredAgents (runtime)", () => {
+        useChatStore.getState().setAvailableAgents([createAgent("from-settings")]);
+        useChatStore.setState({ discoveredAgents: [createAgent("from-runtime")] });
+        useChatStore.getState().setAgent("from-runtime");
+        expect(useChatStore.getState().selectedAgent).toBe("from-runtime");
+      });
+
+      it("setAgent rejects an agent in neither list", () => {
+        useChatStore.getState().setAvailableAgents([createAgent("a")]);
+        useChatStore.setState({ discoveredAgents: [createAgent("b")] });
+        useChatStore.getState().setAgent("nope");
+        expect(useChatStore.getState().selectedAgent).toBeNull();
+      });
+
+      it("setAgent accepts any name when both lists are empty (legacy fallback)", () => {
+        useChatStore.getState().setAgent("anything");
+        expect(useChatStore.getState().selectedAgent).toBe("anything");
+      });
+    });
+
+    describe("C4 — explicit empty enabled tool list is honoured", () => {
+      it("disabling all tools via toggleMCPTool serializes to tools: []", () => {
+        useChatStore.getState().setMCPServers([
+          createMCPServerState({
+            server: { name: "docs", type: "http", url: "https://docs.x", enabled: true },
+            enabled: true,
+            tools: [
+              { name: "search", enabled: true },
+              { name: "fetch", enabled: true },
+            ],
+          }),
+        ]);
+
+        useChatStore.getState().toggleMCPTool("docs", "search");
+        useChatStore.getState().toggleMCPTool("docs", "fetch");
+
+        const config = useChatStore.getState().getEnabledMCPConfig();
+        expect(config.docs).toMatchObject({ tools: [] });
+        // No excludedTools fallback — the explicit allowlist is empty.
+        expect(config.docs.excludedTools).toBeUndefined();
+      });
+
+      it("after first toggle the explicit enabled list is used (no '*' fallback)", () => {
+        useChatStore.getState().setMCPServers([
+          createMCPServerState({
+            server: { name: "docs", type: "http", url: "https://docs.x", enabled: true },
+            enabled: true,
+            tools: [
+              { name: "search", enabled: true },
+              { name: "fetch", enabled: true },
+            ],
+          }),
+        ]);
+
+        // Toggle "fetch" off — server now considered initialized.
+        useChatStore.getState().toggleMCPTool("docs", "fetch");
+
+        const config = useChatStore.getState().getEnabledMCPConfig();
+        expect(config.docs).toMatchObject({ tools: ["search"] });
+      });
+
+      it("an un-toggled server still falls back to '*' (legacy behavior preserved)", () => {
+        useChatStore.getState().setMCPServers([
+          createMCPServerState({
+            server: { name: "docs", type: "http", url: "https://docs.x", enabled: true },
+            enabled: true,
+            tools: [{ name: "search", enabled: true }],
+          }),
+        ]);
+
+        const config = useChatStore.getState().getEnabledMCPConfig();
+        expect(config.docs).toMatchObject({ tools: ["*"] });
+      });
     });
   });
 
