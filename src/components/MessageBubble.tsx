@@ -70,8 +70,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
   }, [ctx, message.content]);
 
   const isUser = message.role === "user";
-  const isThinking = !isUser && message.isStreaming && !message.content;
-  const isDone = !isUser && !message.isStreaming && message.content;
+  const isSystem = message.role === "system";
+  const isThinking = !isUser && !isSystem && message.isStreaming && !message.content;
+  const isDone = !isUser && !isSystem && !message.isStreaming && message.content;
+
+  if (isSystem) {
+    return (
+      <div className="copilot-system-message" role="note" aria-label="System message">
+        {message.content}
+      </div>
+    );
+  }
 
   return (
     <div className="copilot-message">
