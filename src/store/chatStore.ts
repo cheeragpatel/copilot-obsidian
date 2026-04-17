@@ -14,9 +14,14 @@ interface ChatState {
   selectedAgent: string | null;
   conversations: ConversationMeta[];
   discoveredAgents: CustomAgentEntry[];
+  availableAgents: CustomAgentEntry[];
   mcpServers: MCPServerState[];
+  toolSelectionInitialized: Record<string, boolean>;
   _loadingTimeoutId: number | undefined;
 }
+
+type DiscoveredTool = { name: string; namespacedName?: string; description?: string };
+type ToolPatch = Partial<Pick<ToolCallInfo, "status" | "result">>;
 
 interface ChatActions {
   addMessage: (message: ChatMessage) => void;
@@ -25,7 +30,10 @@ interface ChatActions {
   appendToLastAssistantMessage: (delta: string) => void;
   setLastMessageStreaming: (isStreaming: boolean) => void;
   addToolCall: (toolCall: ToolCallInfo) => void;
+  addToolCallWithId: (toolCall: ToolCallInfo) => void;
   updateToolCall: (name: string, status: ToolCallInfo["status"], result?: string) => void;
+  updateToolCallById: (id: string, patch: ToolPatch) => void;
+  completeToolCallById: (id: string, ok: boolean, result?: string) => void;
   completeAllToolCalls: () => void;
   clearMessages: () => void;
   setMessages: (messages: ChatMessage[]) => void;
@@ -39,8 +47,12 @@ interface ChatActions {
   setAgent: (agent: string | null) => void;
   setConversations: (conversations: ConversationMeta[]) => void;
   setDiscoveredAgents: (agents: CustomAgentEntry[]) => void;
+  setAvailableAgents: (agents: CustomAgentEntry[]) => void;
   setMCPServers: (servers: MCPServerState[]) => void;
-  updateMCPTools: (tools: Array<{ name: string; namespacedName?: string; description: string }>) => void;
+  updateMCPTools: (tools: DiscoveredTool[]) => void;
+  replaceMCPTools: (tools: DiscoveredTool[]) => void;
+  mergeDiscoveredMCPTools: (server: string, tools: DiscoveredTool[]) => void;
+  mergeDiscoveredMCPTool: (server: string, tool: DiscoveredTool) => void;
   toggleMCP: (name: string) => void;
   toggleMCPTool: (serverName: string, toolName: string) => void;
   getEnabledMCPConfig: () => Record<string, any>;
@@ -68,7 +80,7 @@ function getToolServerName(namespacedName?: string): string | null {
   return null;
 }
 
-function getDiscoveredToolName(tool: { name: string; namespacedName?: string }): string {
+function getDiscoveredToolName(tool: DiscoveredTool): string {
   if (tool.namespacedName?.includes("/")) {
     return tool.namespacedName.split("/").slice(1).join("/");
   }
@@ -78,6 +90,26 @@ function getDiscoveredToolName(tool: { name: string; namespacedName?: string }):
   }
 
   return tool.name;
+}
+
+// Internal helper: applies a patch to the most recent assistant message.
+// Pass an updater that returns a Partial<ChatMessage> to merge.
+function updateLastAssistant(
+  messages: ChatMessage[],
+  updater: (msg: ChatMessage) => Partial<ChatMessage> | null,
+): { messages: ChatMessage[]; changed: boolean } {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "assistant") {
+      const patch = updater(messages[i]);
+      if (patch === null) {
+        return { messages, changed: false };
+      }
+      const next = messages.slice();
+      next[i] = { ...messages[i], ...patch };
+      return { messages: next, changed: true };
+    }
+  }
+  return { messages, changed: false };
 }
 
 export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
@@ -92,7 +124,9 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   selectedAgent: null,
   conversations: [],
   discoveredAgents: [],
+  availableAgents: [],
   mcpServers: [],
+  toolSelectionInitialized: {},
   _loadingTimeoutId: undefined,
 
   // Actions
@@ -114,74 +148,82 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
 
   updateLastAssistantMessage: (content) =>
     set((state) => {
-      const messages = [...state.messages];
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "assistant") {
-          messages[i] = { ...messages[i], content };
-          break;
-        }
-      }
+      const { messages } = updateLastAssistant(state.messages, () => ({ content }));
       return { messages };
     }),
 
   appendToLastAssistantMessage: (delta) =>
     set((state) => {
-      const messages = [...state.messages];
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "assistant") {
-          messages[i] = { ...messages[i], content: messages[i].content + delta };
-          break;
-        }
-      }
+      const { messages } = updateLastAssistant(state.messages, (msg) => ({
+        content: msg.content + delta,
+      }));
       return { messages };
     }),
 
   setLastMessageStreaming: (isStreaming) =>
     set((state) => {
-      const messages = [...state.messages];
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "assistant") {
-          messages[i] = { ...messages[i], isStreaming };
-          break;
-        }
-      }
+      const { messages } = updateLastAssistant(state.messages, () => ({ isStreaming }));
       return { messages };
     }),
 
   addToolCall: (toolCall) =>
     set((state) => {
-      const messages = [...state.messages];
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "assistant") {
-          const existing = messages[i].toolCalls || [];
-          messages[i] = { ...messages[i], toolCalls: [...existing, toolCall] };
-          break;
-        }
-      }
+      const { messages } = updateLastAssistant(state.messages, (msg) => ({
+        toolCalls: [...(msg.toolCalls || []), toolCall],
+      }));
       return { messages };
     }),
 
+  addToolCallWithId: (toolCall) => {
+    // Convenience alias — ToolCallInfo already carries an `id` field. This
+    // makes the call site explicit when it is correlating by SDK tool_call_id.
+    get().addToolCall(toolCall);
+  },
+
   updateToolCall: (name, status, result) =>
     set((state) => {
-      const messages = [...state.messages];
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === "assistant" && messages[i].toolCalls) {
-          let updated = false;
-          const toolCalls = messages[i].toolCalls!.map((tc) => {
-            if (!updated && tc.name === name && tc.status === "running") {
-              updated = true;
-              return { ...tc, status, result };
-            }
-            return tc;
-          });
-          if (updated) {
-            messages[i] = { ...messages[i], toolCalls };
-            return { messages };
+      const { messages } = updateLastAssistant(state.messages, (msg) => {
+        if (!msg.toolCalls) return null;
+        let updated = false;
+        const toolCalls = msg.toolCalls.map((tc) => {
+          if (!updated && tc.name === name && tc.status === "running") {
+            updated = true;
+            return { ...tc, status, result };
           }
-        }
-      }
+          return tc;
+        });
+        return updated ? { toolCalls } : null;
+      });
       return { messages };
     }),
+
+  updateToolCallById: (id, patch) =>
+    set((state) => {
+      const messages = state.messages.slice();
+      let changed = false;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (msg.role !== "assistant" || !msg.toolCalls) continue;
+        let localChange = false;
+        const toolCalls = msg.toolCalls.map((tc) => {
+          if (tc.id === id) {
+            localChange = true;
+            return { ...tc, ...patch };
+          }
+          return tc;
+        });
+        if (localChange) {
+          messages[i] = { ...msg, toolCalls };
+          changed = true;
+          break;
+        }
+      }
+      return changed ? { messages } : state;
+    }),
+
+  completeToolCallById: (id, ok, result) => {
+    get().updateToolCallById(id, { status: ok ? "complete" : "error", result });
+  },
 
   completeAllToolCalls: () =>
     set((state) => {
@@ -247,7 +289,19 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       return;
     }
     const state = get();
-    const exists = state.discoveredAgents.some((a) => a.name === agentName);
+    // Validate against the union of explicitly-configured availableAgents and
+    // any agents discovered at runtime. If the caller has not populated
+    // availableAgents (legacy behavior / older tests), fall back to the
+    // discoveredAgents check that pre-dated this validation.
+    const candidates = state.availableAgents.length > 0
+      ? [...state.availableAgents, ...state.discoveredAgents]
+      : state.discoveredAgents;
+    if (candidates.length === 0) {
+      // Nothing to validate against — accept any name.
+      set({ selectedAgent: agentName });
+      return;
+    }
+    const exists = candidates.some((a) => a.name === agentName);
     set({ selectedAgent: exists ? agentName : null });
   },
 
@@ -255,11 +309,15 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
 
   setDiscoveredAgents: (agents) => set({ discoveredAgents: agents }),
 
+  setAvailableAgents: (agents) => set({ availableAgents: agents }),
+
   setMCPServers: (servers) => set({ mcpServers: servers }),
 
   updateMCPTools: (discoveredTools) =>
     set((state) => {
-      const toolsByServer = new Map<string, typeof discoveredTools>();
+      // Replace semantics: per server, the discovered list becomes the new
+      // canonical tool list (preserving the user's `enabled` toggles).
+      const toolsByServer = new Map<string, DiscoveredTool[]>();
       for (const tool of discoveredTools) {
         const serverName = getToolServerName(tool.namespacedName);
         if (!serverName) continue;
@@ -288,6 +346,32 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       };
     }),
 
+  // Alias of updateMCPTools — explicit "replace" naming for new call sites.
+  replaceMCPTools: (tools) => get().updateMCPTools(tools),
+
+  mergeDiscoveredMCPTools: (serverName, incoming) =>
+    set((state) => ({
+      mcpServers: state.mcpServers.map((serverState) => {
+        if (serverState.server.name !== serverName) return serverState;
+
+        const byName = new Map(serverState.tools.map((t) => [t.name, t]));
+        for (const tool of incoming) {
+          const resolvedName = getDiscoveredToolName(tool);
+          const existing = byName.get(tool.name) || byName.get(resolvedName);
+          byName.set(resolvedName, {
+            name: resolvedName,
+            description: tool.description || existing?.description,
+            enabled: existing ? existing.enabled : true,
+          });
+        }
+        return { ...serverState, tools: Array.from(byName.values()) };
+      }),
+    })),
+
+  mergeDiscoveredMCPTool: (serverName, tool) => {
+    get().mergeDiscoveredMCPTools(serverName, [tool]);
+  },
+
   toggleMCP: (name) =>
     set((state) => ({
       mcpServers: state.mcpServers.map((serverState) =>
@@ -313,10 +397,18 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
             }
           : serverState,
       ),
+      // Mark this server as having had explicit user tool selection. From this
+      // point onward, getEnabledMCPConfig honours the explicit enabled list
+      // (including the empty list — i.e. "disable all tools").
+      toolSelectionInitialized: {
+        ...state.toolSelectionInitialized,
+        [serverName]: true,
+      },
     })),
 
   getEnabledMCPConfig: () => {
     const config: Record<string, any> = {};
+    const initialized = get().toolSelectionInitialized;
 
     for (const serverState of get().mcpServers) {
       if (!serverState.enabled) continue;
@@ -326,12 +418,19 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       const enabledTools = tools.filter((tool) => tool.enabled).map((tool) => tool.name);
       const hasConfiguredTools = !!server.configTools?.length;
       const usesWildcardTools = !!server.configTools?.includes("*");
+      const userInitialized = !!initialized[server.name];
 
       // The Copilot SDK requires `tools` on every MCP server config:
       //   ["*"] = all tools, [] = none, ["a","b"] = explicit allowlist.
-      // Fall back to ["*"] so servers actually load when no tools are explicitly configured.
       let toolsField: string[];
-      if (hasConfiguredTools && !usesWildcardTools) {
+      let allowExcludedFallback = true;
+      if (userInitialized) {
+        // The user has explicitly toggled tools on this server. Honour the
+        // current enabled list verbatim, even if empty (i.e. "disable all
+        // tools" must serialize to `tools: []`).
+        toolsField = enabledTools;
+        allowExcludedFallback = false;
+      } else if (hasConfiguredTools && !usesWildcardTools) {
         // User explicitly picked a subset via config file.
         toolsField = enabledTools.length > 0 ? enabledTools : server.configTools!;
       } else if (enabledTools.length > 0 && disabledTools.length > 0) {
@@ -343,7 +442,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       }
 
       const toolConfig: Record<string, any> = { tools: toolsField };
-      if (disabledTools.length > 0 && toolsField.includes("*")) {
+      if (allowExcludedFallback && disabledTools.length > 0 && toolsField.includes("*")) {
         toolConfig.excludedTools = disabledTools;
       }
 
