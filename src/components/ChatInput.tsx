@@ -1,14 +1,18 @@
 import * as React from "react";
-import { Notice } from "obsidian";
-import { useState, useCallback, useRef, useEffect, useContext } from "react";
+import { useState, useCallback, useRef, useEffect, useContext, useMemo } from "react";
 import { PluginContext } from "../views/CopilotChatView";
 import { useChatStore } from "../store/chatStore";
+import { getAvailableAgents } from "../store/agentSelectors";
 import { ChatMode } from "../types/constants";
 import { BUILT_IN_COMMANDS } from "../commands/SlashCommandRegistry";
-import { ModeSelector } from "./ModeSelector";
-import { ModelSelector } from "./ModelSelector";
-import { MCPPicker } from "./MCPPicker";
-import { AgentPicker } from "./AgentPicker";
+import {
+  AutocompletePopup,
+  autocompleteOptionId,
+  type AutocompleteItem,
+} from "./AutocompletePopup";
+import { AttachmentChips } from "./AttachmentChips";
+import { ChatControlsBar } from "./ChatControlsBar";
+import { useVaultAttachments } from "../hooks/useVaultAttachments";
 import type { FileAttachment } from "../types/chat";
 import type { CustomAgentEntry } from "../types/settings";
 
@@ -25,25 +29,7 @@ interface ChatInputProps {
   canRetry?: boolean;
 }
 
-interface AutocompleteItem {
-  type: "command" | "agent";
-  label: string;
-  description: string;
-  icon: string;
-  value: string;
-}
-
-interface FileWithPath extends File {
-  path?: string;
-}
-
-function normalizePath(path: string): string {
-  return path.replace(/^file:\/\//, "").replace(/\\/g, "/").replace(/\/+/g, "/");
-}
-
-function isFileDrag(dataTransfer: DataTransfer | null): boolean {
-  return Array.from(dataTransfer?.types || []).includes("Files");
-}
+const AUTOCOMPLETE_ID = "copilot-autocomplete";
 
 export const ChatInput: React.FC<ChatInputProps> = ({
   onSend,
@@ -58,16 +44,27 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   canRetry,
 }) => {
   const [input, setInput] = useState("");
-  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
-  const [autocomplete, setAutocomplete] = useState<AutocompleteItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [isDragActive, setIsDragActive] = useState(false);
+  const [autocompleteDismissed, setAutocompleteDismissed] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const ctx = useContext(PluginContext);
-  const { currentMode, discoveredAgents } = useChatStore();
+  // Per-field selectors keep the input from re-rendering on unrelated store
+  // updates (messages, MCP tools, etc).
+  const currentMode = useChatStore((s) => s.currentMode);
+  const discoveredAgents = useChatStore((s) => s.discoveredAgents);
   const customAgents = ctx?.settings?.customAgents ?? [];
 
+  const {
+    attachments,
+    isDragActive,
+    addFiles,
+    removeAttachment,
+    clear: clearAttachments,
+    bindDropzone,
+  } = useVaultAttachments(ctx);
+
+  // Autoresize the textarea.
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -76,7 +73,16 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   }, [input]);
 
-  useEffect(() => {
+  // Memoize the merged agent list so autocomplete doesn't recompute it on
+  // every keystroke unless the underlying lists changed.
+  const availableAgents = useMemo(
+    () => getAvailableAgents(customAgents, discoveredAgents),
+    [customAgents, discoveredAgents],
+  );
+
+  // Pure derivation — autocomplete items follow input + agent list.
+  const autocomplete = useMemo<AutocompleteItem[]>(() => {
+    if (autocompleteDismissed) return [];
     const items: AutocompleteItem[] = [];
 
     const slashMatch = input.match(/^\/([\w-]*)$/);
@@ -101,24 +107,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     const atMatch = input.match(/@([\w-]*)$/);
     if (atMatch) {
       const partial = atMatch[1].toLowerCase();
-      const allAgents: CustomAgentEntry[] = [];
-      const seen = new Set<string>();
-      for (const agent of (ctx?.settings?.customAgents || []).filter(
-        (item: CustomAgentEntry) => item.enabled,
-      )) {
-        if (!seen.has(agent.name)) {
-          seen.add(agent.name);
-          allAgents.push(agent);
-        }
-      }
-      for (const agent of discoveredAgents) {
-        if (!seen.has(agent.name)) {
-          seen.add(agent.name);
-          allAgents.push(agent);
-        }
-      }
-
-      const filtered = allAgents.filter(
+      const filtered = availableAgents.filter(
         (agent) =>
           agent.name.toLowerCase().startsWith(partial) ||
           agent.displayName.toLowerCase().includes(partial),
@@ -134,101 +123,30 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       }
     }
 
-    setAutocomplete(items);
+    return items;
+  }, [input, availableAgents, autocompleteDismissed]);
+
+  // Reset highlighted suggestion whenever the list changes.
+  useEffect(() => {
     setSelectedIndex(0);
-  }, [input, ctx, discoveredAgents]);
+  }, [autocomplete]);
+
+  // A new keystroke that changes the trigger token re-arms the popup.
+  useEffect(() => {
+    setAutocompleteDismissed(false);
+  }, [input]);
 
   const applyAutocomplete = useCallback(
     (item: AutocompleteItem) => {
       if (item.type === "command") {
         setInput(item.value);
       } else {
-        const newInput = input.replace(/@[\w-]*$/, item.value);
-        setInput(newInput);
+        setInput((prev) => prev.replace(/@[\w-]*$/, item.value));
       }
-      setAutocomplete([]);
+      setAutocompleteDismissed(true);
       textareaRef.current?.focus();
     },
-    [input],
-  );
-
-  const resolveVaultAttachment = useCallback(
-    (file: FileWithPath): FileAttachment | null => {
-      const vault = ctx?.app?.vault;
-      if (!vault) return null;
-
-      const candidatePaths = new Set<string>();
-      const basePath = vault.adapter?.getBasePath?.();
-      const normalizedBasePath =
-        typeof basePath === "string" && basePath.length > 0
-          ? normalizePath(basePath).replace(/\/$/, "")
-          : null;
-      const rawPath = typeof file.path === "string" ? normalizePath(file.path) : "";
-      const webkitPath =
-        typeof file.webkitRelativePath === "string" && file.webkitRelativePath.length > 0
-          ? normalizePath(file.webkitRelativePath)
-          : "";
-
-      if (rawPath) {
-        if (normalizedBasePath && rawPath.startsWith(`${normalizedBasePath}/`)) {
-          candidatePaths.add(rawPath.slice(normalizedBasePath.length + 1));
-        }
-        candidatePaths.add(rawPath.replace(/^\/+/, ""));
-      }
-
-      if (webkitPath) {
-        candidatePaths.add(webkitPath.replace(/^\/+/, ""));
-      }
-
-      if (file.name) {
-        candidatePaths.add(file.name);
-      }
-
-      for (const candidate of candidatePaths) {
-        const normalizedCandidate = normalizePath(candidate).replace(/^\/+/, "");
-        const abstractFile =
-          vault.getAbstractFileByPath?.(normalizedCandidate) ||
-          vault.getFileByPath?.(normalizedCandidate);
-        if (abstractFile?.path) {
-          return {
-            path: abstractFile.path,
-            name:
-              typeof abstractFile.name === "string" && abstractFile.name.length > 0
-                ? abstractFile.name
-                : file.name || abstractFile.path.split("/").pop() || abstractFile.path,
-            type: file.type || "application/octet-stream",
-          };
-        }
-      }
-
-      return null;
-    },
-    [ctx],
-  );
-
-  const addAttachments = useCallback(
-    (files: ArrayLike<File>) => {
-      const resolved = Array.from(files, (file) => resolveVaultAttachment(file as FileWithPath));
-      const validAttachments = resolved.filter(
-        (attachment): attachment is FileAttachment => attachment !== null,
-      );
-      const missingCount = resolved.length - validAttachments.length;
-
-      if (validAttachments.length > 0) {
-        setAttachments((current) => {
-          const seen = new Set(current.map((attachment) => attachment.path));
-          const next = validAttachments.filter((attachment) => !seen.has(attachment.path));
-          return next.length > 0 ? [...current, ...next] : current;
-        });
-      }
-
-      if (missingCount > 0) {
-        new Notice(
-          `${missingCount} file${missingCount === 1 ? "" : "s"} could not be attached because they are outside the vault.`,
-        );
-      }
-    },
-    [resolveVaultAttachment],
+    [],
   );
 
   const handleSubmit = useCallback(() => {
@@ -239,63 +157,26 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       onSend(input);
     }
     setInput("");
-    setAttachments([]);
-    setAutocomplete([]);
-    setIsDragActive(false);
+    clearAttachments();
+    setAutocompleteDismissed(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [attachments, input, isLoading, onSend]);
+  }, [attachments, clearAttachments, input, isLoading, onSend]);
 
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       if (event.target.files) {
-        addAttachments(Array.from(event.target.files));
+        addFiles(Array.from(event.target.files));
       }
       event.target.value = "";
     },
-    [addAttachments],
+    [addFiles],
   );
 
   const handleAttachClick = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
-
-  const handleRemoveAttachment = useCallback((path: string) => {
-    setAttachments((current) => current.filter((attachment) => attachment.path !== path));
-  }, []);
-
-  const handleDragEnter = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    if (!isFileDrag(event.dataTransfer)) return;
-    event.preventDefault();
-    setIsDragActive(true);
-  }, []);
-
-  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    if (!isFileDrag(event.dataTransfer)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    setIsDragActive(true);
-  }, []);
-
-  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
-      return;
-    }
-    setIsDragActive(false);
-  }, []);
-
-  const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (!isFileDrag(event.dataTransfer)) return;
-      event.preventDefault();
-      setIsDragActive(false);
-      if (event.dataTransfer.files.length > 0) {
-        addAttachments(Array.from(event.dataTransfer.files));
-      }
-    },
-    [addAttachments],
-  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -320,7 +201,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         }
         if (e.key === "Escape") {
           e.preventDefault();
-          setAutocomplete([]);
+          setAutocompleteDismissed(true);
           return;
         }
       }
@@ -336,32 +217,21 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     [handleSubmit, autocomplete, selectedIndex, applyAutocomplete],
   );
 
+  const activeDescendant =
+    autocomplete.length > 0 ? autocompleteOptionId(selectedIndex, AUTOCOMPLETE_ID) : undefined;
+
   return (
     <div className="copilot-chat-input-area">
-      {autocomplete.length > 0 && (
-        <div className="copilot-autocomplete-popup">
-          {autocomplete.map((item, i) => (
-            <div
-              key={`${item.type}-${item.value}`}
-              className={`copilot-autocomplete-item ${i === selectedIndex ? "selected" : ""}`}
-              onClick={() => applyAutocomplete(item)}
-              onMouseEnter={() => setSelectedIndex(i)}
-            >
-              <span className="copilot-autocomplete-icon">{item.icon}</span>
-              <div className="copilot-autocomplete-text">
-                <span className="copilot-autocomplete-label">{item.label}</span>
-                <span className="copilot-autocomplete-desc">{item.description}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <AutocompletePopup
+        items={autocomplete}
+        selectedIndex={selectedIndex}
+        onSelect={applyAutocomplete}
+        onHover={setSelectedIndex}
+        id={AUTOCOMPLETE_ID}
+      />
       <div
         className={`copilot-chat-input-wrapper ${isDragActive ? "copilot-drag-active" : ""}`}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        {...bindDropzone}
       >
         <input
           ref={fileInputRef}
@@ -371,24 +241,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           onChange={handleFileChange}
           tabIndex={-1}
         />
-        {attachments.length > 0 && (
-          <div className="copilot-attachment-chips">
-            {attachments.map((attachment) => (
-              <div key={attachment.path} className="copilot-attachment-chip">
-                <span>{attachment.name}</span>
-                <button
-                  type="button"
-                  className="copilot-attachment-chip-remove"
-                  onClick={() => handleRemoveAttachment(attachment.path)}
-                  aria-label={`Remove ${attachment.name}`}
-                  title={`Remove ${attachment.name}`}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        <AttachmentChips items={attachments} onRemove={removeAttachment} />
         <div className="copilot-chat-input-row">
           <textarea
             ref={textareaRef}
@@ -402,6 +255,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 : "Ask Copilot anything... (/ for commands, @ for agents)"
             }
             rows={1}
+            aria-label="Chat with Copilot"
+            aria-autocomplete="list"
+            aria-controls={AUTOCOMPLETE_ID}
+            aria-activedescendant={activeDescendant}
           />
           <div className="copilot-chat-btn-group">
             {canRetry && !isLoading && (
@@ -441,12 +298,15 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </div>
         </div>
       </div>
-      <div className="copilot-chat-controls">
-        <ModeSelector currentMode={currentMode} onModeChange={onModeSwitch} />
-        <ModelSelector onModelChange={onModelChange} />
-        <MCPPicker onMCPChange={onMCPChange} onRefresh={onMCPRefresh} />
-        <AgentPicker agents={customAgents} onAddAgent={onAddAgent} />
-      </div>
+      <ChatControlsBar
+        currentMode={currentMode}
+        agents={customAgents}
+        onMode={onModeSwitch}
+        onModel={onModelChange}
+        onMCPChange={onMCPChange}
+        onMCPRefresh={onMCPRefresh}
+        onAddAgent={onAddAgent}
+      />
       {input.length > 0 && (
         <div className={`copilot-char-count${input.length > 10000 ? " warning" : ""}`}>
           {input.length} chars
