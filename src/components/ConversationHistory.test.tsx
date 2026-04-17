@@ -71,7 +71,7 @@ describe("ConversationHistory", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "×" }));
+    await user.click(screen.getByRole("button", { name: "Close conversation history" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -91,6 +91,47 @@ describe("ConversationHistory", () => {
     expect(overlay).not.toBeNull();
 
     await user.click(overlay!);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the modal with dialog role and aria-modal", () => {
+    render(
+      <ConversationHistory
+        conversations={conversations}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Conversations" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+  });
+
+  it("renders conversation rows as buttons", () => {
+    render(
+      <ConversationHistory
+        conversations={conversations}
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("button", { name: /Daily notes recap/ });
+    expect(row.tagName).toBe("BUTTON");
+  });
+
+  it("closes when Escape is pressed", () => {
+    const onClose = vi.fn();
+    render(
+      <ConversationHistory
+        conversations={conversations}
+        onSelect={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
