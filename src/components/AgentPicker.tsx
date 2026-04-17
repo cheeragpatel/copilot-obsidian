@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useState, useCallback } from "react";
 import { useChatStore } from "../store/chatStore";
+import { getAvailableAgents } from "../store/agentSelectors";
 import type { CustomAgentEntry } from "../types/settings";
 
 interface AgentPickerProps {
@@ -15,15 +16,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({ agents, onAddAgent }) 
   const [newDesc, setNewDesc] = useState("");
   const [newPrompt, setNewPrompt] = useState("");
 
-  // Merge settings agents (enabled) + discovered agents, dedupe by name
-  const seen = new Set<string>();
-  const allAgents: CustomAgentEntry[] = [];
-  for (const a of agents.filter((a) => a.enabled)) {
-    if (!seen.has(a.name)) { seen.add(a.name); allAgents.push(a); }
-  }
-  for (const a of discoveredAgents) {
-    if (!seen.has(a.name)) { seen.add(a.name); allAgents.push(a); }
-  }
+  const allAgents = getAvailableAgents(agents, discoveredAgents);
 
   const handleAddAgent = useCallback(() => {
     if (!newName.trim()) return;
