@@ -183,3 +183,17 @@ export class SlashCommandRegistry {
     this.commands.set(command.name, command);
   }
 }
+
+// Module-level singleton so registered commands surface in autocomplete from
+// any caller (the chat input, slash dispatcher, etc.) without plumbing.
+let sharedRegistry: SlashCommandRegistry | null = null;
+
+export function getSharedRegistry(): SlashCommandRegistry {
+  if (!sharedRegistry) sharedRegistry = new SlashCommandRegistry();
+  return sharedRegistry;
+}
+
+/** Return all known commands (built-ins + anything registered at runtime). */
+export function getAllCommands(): SlashCommand[] {
+  return getSharedRegistry().getAll();
+}

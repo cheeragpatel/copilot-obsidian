@@ -1397,3 +1397,40 @@
 .copilot-jump-bottom-btn:hover {
   opacity: 0.85;
 }
+
+/* ── Wave 2 features (current-note context chip) ───────────────────── */
+.copilot-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 0 12px 6px;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  border-radius: 12px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-size: 0.85em;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.copilot-context-chip-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.copilot-context-chip-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 1em;
+  line-height: 1;
+}
+
+.copilot-context-chip-dismiss:hover {
+  color: var(--text-normal);
+}

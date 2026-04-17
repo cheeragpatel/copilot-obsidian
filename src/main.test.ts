@@ -53,6 +53,10 @@ function createApp(overrides: Record<string, any> = {}) {
       revealLeaf: vi.fn(),
       detachLeavesOfType: vi.fn(),
       onLayoutReady: vi.fn((cb: () => void) => cb()),
+      on: vi.fn().mockReturnValue({}),
+      offref: vi.fn(),
+      trigger: vi.fn(),
+      openLinkText: vi.fn().mockResolvedValue(undefined),
       ...workspaceOverrides,
     },
     vault: {
@@ -97,6 +101,7 @@ function createPlugin(appOverrides: Record<string, any> = {}) {
     addCommand: vi.fn(),
     registerView: vi.fn(),
     registerEditorExtension: vi.fn(),
+    registerEvent: vi.fn(),
     loadData: vi.fn().mockResolvedValue({}),
     saveData: vi.fn().mockResolvedValue(undefined),
   });
@@ -138,7 +143,8 @@ describe("CopilotPlugin", () => {
 
     await plugin.onload();
 
-    expect(plugin.addCommand).toHaveBeenCalledTimes(2);
+    // open + new + export + 5 inline editor commands = 8
+    expect(plugin.addCommand).toHaveBeenCalledTimes(8);
     expect(plugin.addCommand).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "open-copilot-chat",
@@ -153,6 +159,51 @@ describe("CopilotPlugin", () => {
         callback: expect.any(Function),
       }),
     );
+    expect(plugin.addCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "export-copilot-conversation",
+        name: "Export Copilot Conversation to Note",
+        callback: expect.any(Function),
+      }),
+    );
+    expect(plugin.addCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "copilot-chat:rewrite-selection" }),
+    );
+  });
+
+  it("New Copilot Conversation command activates view and triggers workspace event", async () => {
+    const trigger = vi.fn();
+    const { plugin, app } = createPlugin({ workspace: { trigger } });
+    const activate = vi.spyOn(plugin, "activateView").mockResolvedValue(undefined);
+
+    await plugin.onload();
+    const newCmd = vi
+      .mocked(plugin.addCommand)
+      .mock.calls.map((c: any[]) => c[0])
+      .find((c: any) => c.id === "new-copilot-conversation");
+    expect(newCmd).toBeDefined();
+
+    await newCmd.callback();
+
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(trigger).toHaveBeenCalledWith("copilot-chat:new-conversation");
+    expect(app.workspace.trigger).toBe(trigger);
+  });
+
+  it("Export command triggers workspace event after activating view", async () => {
+    const trigger = vi.fn();
+    const { plugin } = createPlugin({ workspace: { trigger } });
+    const activate = vi.spyOn(plugin, "activateView").mockResolvedValue(undefined);
+
+    await plugin.onload();
+    const exportCmd = vi
+      .mocked(plugin.addCommand)
+      .mock.calls.map((c: any[]) => c[0])
+      .find((c: any) => c.id === "export-copilot-conversation");
+    await exportCmd.callback();
+
+    expect(activate).toHaveBeenCalled();
+    expect(trigger).toHaveBeenCalledWith("copilot-chat:export-conversation");
   });
 
   it("onload() adds settings tab", async () => {

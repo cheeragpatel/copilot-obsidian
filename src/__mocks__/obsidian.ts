@@ -9,6 +9,7 @@ export class Plugin {
   addCommand = vi.fn();
   registerView = vi.fn();
   registerEditorExtension = vi.fn();
+  registerEvent = vi.fn();
   loadData = vi.fn().mockResolvedValue({});
   saveData = vi.fn().mockResolvedValue(undefined);
 }
@@ -108,11 +109,15 @@ export class Setting {
 export class TFile {
   path: string;
   basename: string;
+  extension: string;
   stat: { size: number; mtime: number; ctime: number };
 
   constructor(path: string) {
     this.path = path;
-    this.basename = path.split("/").pop()?.replace(".md", "") || "";
+    const name = path.split("/").pop() || "";
+    const dot = name.lastIndexOf(".");
+    this.basename = dot >= 0 ? name.slice(0, dot) : name;
+    this.extension = dot >= 0 ? name.slice(dot + 1) : "";
     this.stat = { size: 100, mtime: Date.now(), ctime: Date.now() };
   }
 }
@@ -139,6 +144,8 @@ export function createMockApp(overrides: any = {}): any {
       onLayoutReady: vi.fn((cb: any) => cb()),
       on: vi.fn().mockReturnValue({}),
       offref: vi.fn(),
+      trigger: vi.fn(),
+      openLinkText: vi.fn().mockResolvedValue(undefined),
       ...overrides.workspace,
     },
     vault: {

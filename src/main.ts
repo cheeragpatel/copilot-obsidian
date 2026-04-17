@@ -1,12 +1,18 @@
-import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { Plugin, WorkspaceLeaf } from "obsidian";
 import { CopilotService } from "./services/CopilotService";
 import { ConversationStore, STORAGE_KEY } from "./services/ConversationStore";
 import { CopilotChatView } from "./views/CopilotChatView";
 import { CopilotSettingsTab } from "./settings/SettingsTab";
-import { COPILOT_CHAT_VIEW_TYPE } from "./types/constants";
+import {
+  COPILOT_CHAT_VIEW_TYPE,
+  COPILOT_EVENT_EXPORT_CONVERSATION,
+  COPILOT_EVENT_NEW_CONVERSATION,
+} from "./types/constants";
 import type { PluginSettings } from "./types/settings";
 import { DEFAULT_SETTINGS } from "./types/settings";
+import { normalizeSettings } from "./types/settings.normalize";
 import { clearSessionPermissions } from "./views/PermissionModal";
+import { registerInlineEditorCommands } from "./features/InlineEditorCommands";
 
 export default class CopilotPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
@@ -43,11 +49,23 @@ export default class CopilotPlugin extends Plugin {
     this.addCommand({
       id: "new-copilot-conversation",
       name: "New Copilot Conversation",
-      callback: () => {
-        this.activateView();
-        // The view will handle creating a new conversation
+      callback: async () => {
+        await this.activateView();
+        // The chat panel listens for this event and resets the session.
+        (this.app.workspace as any).trigger(COPILOT_EVENT_NEW_CONVERSATION);
       },
     });
+
+    this.addCommand({
+      id: "export-copilot-conversation",
+      name: "Export Copilot Conversation to Note",
+      callback: async () => {
+        await this.activateView();
+        (this.app.workspace as any).trigger(COPILOT_EVENT_EXPORT_CONVERSATION);
+      },
+    });
+
+    registerInlineEditorCommands(this);
 
     // Add settings tab
     this.addSettingTab(new CopilotSettingsTab(this.app, this));
@@ -111,18 +129,7 @@ export default class CopilotPlugin extends Plugin {
   async loadSettings() {
     const loadedData = ((await this.loadData()) || {}) as Record<string, unknown>;
     const { [STORAGE_KEY]: _storedConversations, ...rawSettings } = loadedData;
-    const loaded = Object.assign({}, DEFAULT_SETTINGS, rawSettings as Partial<PluginSettings>);
-
-    this.settings = {
-      ...loaded,
-      mcpServers: Array.isArray(loaded.mcpServers)
-        ? loaded.mcpServers.map((server: PluginSettings["mcpServers"][number]) => ({
-            ...server,
-            source: "settings" as const,
-          }))
-        : [],
-      customAgents: Array.isArray(loaded.customAgents) ? loaded.customAgents : [],
-    };
+    this.settings = normalizeSettings(rawSettings, DEFAULT_SETTINGS);
   }
 
   async saveSettings() {
