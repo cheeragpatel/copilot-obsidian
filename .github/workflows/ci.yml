@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     strategy:
@@ -24,9 +28,7 @@ jobs:
           node-version: 20
           cache: npm
 
-      # npm ci fails cross-platform because the lockfile lacks binaries for
-      # all OSes (see copilot-instructions.md). Use npm install instead.
-      - run: npm install
+      - run: npm ci
 
       - run: npm run build
 
