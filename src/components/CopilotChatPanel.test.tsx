@@ -349,14 +349,16 @@ describe("CopilotChatPanel", () => {
     await waitFor(() => {
       expect(mockService.createSession).toHaveBeenCalledTimes(2);
     });
+    // C4 (Wave 1): when the user explicitly toggles all tools off, the store
+    // honours the empty list as `tools: []` rather than falling back to the
+    // legacy `tools: ["*"], excludedTools: [...]` behaviour.
     expect(mockService.createSession).toHaveBeenLastCalledWith(
       expect.objectContaining({
         mcpServers: {
           docs: {
             type: "http",
             url: "https://docs.example.com",
-            tools: ["*"],
-            excludedTools: ["search", "fetch"],
+            tools: [],
           },
         },
       }),
