@@ -4,6 +4,18 @@ import type { App, CachedMetadata, TFile } from "obsidian";
 const DEFAULT_SEARCH_LIMIT = 20;
 const SEARCH_SNIPPET_LENGTH = 200;
 
+const FORBIDDEN_PATH_SEGMENTS = new Set([
+  ".obsidian",
+  ".git",
+  ".copilot",
+  ".trash",
+  ".config",
+]);
+
+const INVALID_PATH_ERROR =
+  "Invalid path: must be relative to vault root without '..' segments";
+const NON_MARKDOWN_ERROR = "Invalid path: only markdown (.md) notes are accessible";
+
 /** Reject paths that attempt traversal, absolute access, or null-byte injection. */
 function isUnsafeVaultPath(p: string): boolean {
   const normalized = p.replace(/\\/g, "/");
@@ -12,6 +24,37 @@ function isUnsafeVaultPath(p: string): boolean {
     normalized.startsWith("/") ||
     normalized.includes("\0")
   );
+}
+
+/**
+ * Validate a vault note path. Notes must be markdown files within the
+ * non-hidden portion of the vault. Returns an error result for the tool
+ * to return when invalid, or null when the path is acceptable.
+ */
+function assertNotePath(p: string): { error: string } | null {
+  if (typeof p !== "string" || p.length === 0) {
+    return { error: INVALID_PATH_ERROR };
+  }
+
+  if (isUnsafeVaultPath(p)) {
+    return { error: INVALID_PATH_ERROR };
+  }
+
+  const normalized = p.replace(/\\/g, "/");
+  if (normalized.startsWith(".")) {
+    return { error: INVALID_PATH_ERROR };
+  }
+
+  const firstSegment = normalized.split("/")[0];
+  if (FORBIDDEN_PATH_SEGMENTS.has(firstSegment)) {
+    return { error: INVALID_PATH_ERROR };
+  }
+
+  if (!normalized.toLowerCase().endsWith(".md")) {
+    return { error: NON_MARKDOWN_ERROR };
+  }
+
+  return null;
 }
 
 type SearchMatchType = "path" | "metadata" | "content";
@@ -110,21 +153,18 @@ export function createVaultTools(app: App) {
       required: ["path"],
     },
     handler: async (args: { path: string }) => {
-      if (isUnsafeVaultPath(args.path)) {
-        return { error: "Invalid path: must be relative to vault root without '..' segments" };
+      const invalid = assertNotePath(args.path);
+      if (invalid) return invalid;
+
+      const tfile = app.vault.getFileByPath(args.path);
+      if (!tfile) {
+        return { error: `Note not found: ${args.path}` };
+      }
+      if (tfile.extension !== "md") {
+        return { error: NON_MARKDOWN_ERROR };
       }
 
-      const file = app.vault.getAbstractFileByPath(args.path);
-      if (!file || !(file instanceof (app.vault as any).constructor)) {
-        // Use metadataCache to check if file exists
-        const tfile = app.vault.getFileByPath(args.path);
-        if (!tfile) {
-          return { error: `Note not found: ${args.path}` };
-        }
-        const content = await app.vault.cachedRead(tfile);
-        return { path: args.path, content };
-      }
-      const content = await app.vault.cachedRead(file as TFile);
+      const content = await app.vault.cachedRead(tfile);
       return { path: args.path, content };
     },
   });
@@ -275,9 +315,8 @@ export function createVaultTools(app: App) {
       required: ["path", "content"],
     },
     handler: async (args: { path: string; content: string }) => {
-      if (isUnsafeVaultPath(args.path)) {
-        return { error: "Invalid path: must be relative to vault root without '..' segments" };
-      }
+      const invalid = assertNotePath(args.path);
+      if (invalid) return invalid;
 
       const existing = app.vault.getAbstractFileByPath(args.path);
       if (existing) {
@@ -314,13 +353,15 @@ export function createVaultTools(app: App) {
       required: ["path", "operation", "content"],
     },
     handler: async (args: { path: string; operation: string; content: string }) => {
-      if (isUnsafeVaultPath(args.path)) {
-        return { error: "Invalid path: must be relative to vault root without '..' segments" };
-      }
+      const invalid = assertNotePath(args.path);
+      if (invalid) return invalid;
 
       const file = app.vault.getFileByPath(args.path);
       if (!file) {
         return { error: `Note not found: ${args.path}` };
+      }
+      if (file.extension !== "md") {
+        return { error: NON_MARKDOWN_ERROR };
       }
 
       const existing = await app.vault.read(file);
@@ -377,13 +418,15 @@ export function createVaultTools(app: App) {
       required: ["path"],
     },
     handler: async (args: { path: string }) => {
-      if (isUnsafeVaultPath(args.path)) {
-        return { error: "Invalid path: must be relative to vault root without '..' segments" };
-      }
+      const invalid = assertNotePath(args.path);
+      if (invalid) return invalid;
 
       const file = app.vault.getFileByPath(args.path);
       if (!file) {
         return { error: `Note not found: ${args.path}` };
+      }
+      if (file.extension !== "md") {
+        return { error: NON_MARKDOWN_ERROR };
       }
 
       const metadata = app.metadataCache.getFileCache(file);
