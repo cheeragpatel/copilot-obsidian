@@ -33,6 +33,16 @@ function cloneConversation(conversation: StoredConversation): StoredConversation
   };
 }
 
+export function isStoredConversation(value: unknown): value is StoredConversation {
+  if (!value || typeof value !== "object") return false;
+  const c = value as Partial<StoredConversation>;
+  return (
+    typeof c.sessionId === "string" &&
+    typeof c.title === "string" &&
+    Array.isArray(c.messages)
+  );
+}
+
 export interface ConversationStoreLike {
   loadAll(): Promise<StoredConversation[]>;
   save(conversation: StoredConversation): Promise<void>;
@@ -60,19 +70,34 @@ export class ConversationStore implements ConversationStoreLike {
       return [];
     }
 
-    return stored.map((conversation) =>
-      cloneConversation(conversation as StoredConversation)
-    );
+    const valid: StoredConversation[] = [];
+    for (const entry of stored) {
+      if (isStoredConversation(entry)) {
+        valid.push(cloneConversation(entry));
+      }
+    }
+    return valid;
   }
 
-  async save(conversation: StoredConversation): Promise<void> {
-    this.writeQueue = this.writeQueue.then(() => this._save(conversation)).catch(() => {});
-    return this.writeQueue;
+  save(conversation: StoredConversation): Promise<void> {
+    const op = this.writeQueue.then(() => this._save(conversation));
+    this.writeQueue = op.catch(() => {});
+    return op;
+  }
+
+  delete(sessionId: string): Promise<void> {
+    const op = this.writeQueue.then(() => this._delete(sessionId));
+    this.writeQueue = op.catch(() => {});
+    return op;
   }
 
   private async _save(conversation: StoredConversation): Promise<void> {
     const data = await this.readData();
-    const conversations = await this.loadAll();
+    const stored = data[STORAGE_KEY];
+    const conversations: StoredConversation[] = Array.isArray(stored)
+      ? stored.filter(isStoredConversation).map(cloneConversation)
+      : [];
+
     const index = conversations.findIndex((item) => item.sessionId === conversation.sessionId);
     const existing = index >= 0 ? conversations[index] : null;
     const nextConversation: StoredConversation = {
@@ -92,9 +117,12 @@ export class ConversationStore implements ConversationStoreLike {
     await this.plugin.saveData(data);
   }
 
-  async delete(sessionId: string): Promise<void> {
+  private async _delete(sessionId: string): Promise<void> {
     const data = await this.readData();
-    const conversations = await this.loadAll();
+    const stored = data[STORAGE_KEY];
+    const conversations: StoredConversation[] = Array.isArray(stored)
+      ? stored.filter(isStoredConversation)
+      : [];
     data[STORAGE_KEY] = conversations.filter((conversation) => conversation.sessionId !== sessionId);
     await this.plugin.saveData(data);
   }

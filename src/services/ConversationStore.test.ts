@@ -124,10 +124,7 @@ describe("ConversationStore", () => {
   });
 
   describe("concurrency", () => {
-    // Known issue: save() reads existing data, mutates, then writes back.
-    // Two concurrent saves race on the read step, so the second write
-    // overwrites the first — a classic read-modify-write race condition.
-    it.skip("known issue: concurrent saves don't lose data", async () => {
+    it("concurrent saves do not lose data with sequential ordering", async () => {
       const conv1 = createConversation({ sessionId: "session-1", title: "First" });
       const conv2 = createConversation({ sessionId: "session-2", title: "Second" });
 
@@ -138,14 +135,68 @@ describe("ConversationStore", () => {
       expect(ids).toEqual(["session-1", "session-2"]);
     });
 
-    // Known issue: cloneConversation() in ConversationStore.ts crashes on
-    // null entries because it accesses `.messages` without a null guard.
-    it.skip("known issue: save handles corrupted storage gracefully", async () => {
-      data[STORAGE_KEY] = [null, undefined, { sessionId: "valid", title: "ok", messages: [] }];
+    it("save handles corrupted storage gracefully via isStoredConversation guard", async () => {
+      data[STORAGE_KEY] = [null, undefined, { sessionId: "valid", title: "ok", messages: [] }, "junk"];
 
       await expect(
         store.save(createConversation({ sessionId: "new-session", title: "New" })),
       ).resolves.toBeUndefined();
+
+      const all = await store.loadAll();
+      const ids = all.map((c) => c.sessionId).sort();
+      expect(ids).toEqual(["new-session", "valid"]);
+    });
+
+    it("save() rejects when saveData throws so callers can react", async () => {
+      const error = new Error("disk full");
+      const failing = new ConversationStore({
+        loadData: async () => ({}),
+        saveData: async () => { throw error; },
+      });
+
+      await expect(failing.save(createConversation())).rejects.toBe(error);
+
+      // Subsequent writes should still proceed (queue not poisoned)
+      const ok = new ConversationStore({
+        loadData: async () => ({}),
+        saveData: async () => {},
+      });
+      await expect(ok.save(createConversation())).resolves.toBeUndefined();
+    });
+
+    it("delete() and save() are ordered through the same write queue", async () => {
+      const order: string[] = [];
+      const seqStore = new ConversationStore({
+        loadData: async () => ({ ...data }),
+        saveData: async (next) => {
+          order.push("save");
+          data = next;
+        },
+      });
+      // pre-seed so delete has something to remove
+      data[STORAGE_KEY] = [createConversation({ sessionId: "s1" })];
+
+      await Promise.all([
+        seqStore.save(createConversation({ sessionId: "s2", title: "T2" })),
+        seqStore.delete("s1"),
+        seqStore.save(createConversation({ sessionId: "s3", title: "T3" })),
+      ]);
+
+      expect(order.length).toBe(3);
+      const all = await seqStore.loadAll();
+      const ids = all.map((c) => c.sessionId).sort();
+      expect(ids).toEqual(["s2", "s3"]);
+    });
+
+    it("loadAll skips malformed entries", async () => {
+      data[STORAGE_KEY] = [
+        null,
+        { not: "a conversation" },
+        { sessionId: "good", title: "Good", messages: [], model: "m", mode: "ask", lastUpdated: 1, createdAt: 1 },
+      ];
+
+      const all = await store.loadAll();
+      expect(all.map((c) => c.sessionId)).toEqual(["good"]);
     });
   });
 });
