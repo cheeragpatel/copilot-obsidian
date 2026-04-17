@@ -1,6 +1,38 @@
 /* ===========================
    GitHub Copilot for Obsidian — Styles
+   ===========================
+   File structure (top → bottom):
+     1. Chat container & header
+     2. Mode / model / agent / MCP selectors
+     3. Conversations modal
+     4. Message list & message bubbles (incl. system messages)
+     5. Tool execution indicators & spinners
+     6. Chat input area, attachments, slash command popups
+     7. Thinking indicator + animations (copilot-thinking-pulse, copilot-bounce)
+     8. Empty state, errors, status badge
+     9. Permission modal
+    10. Code block copy button, jump-to-bottom
+
+   Animation keyframes:
+     - copilot-blink           (status-badge connecting fallback)
+     - copilot-spin            (loading spinners)
+     - copilot-bounce          (thinking dots)
+     - copilot-thinking-pulse  (thinking badge while streaming)
+     - copilot-status-pulse    (header connection status badge)
    =========================== */
+
+/* ── Accessibility utilities ── */
+.copilot-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* ── Chat Container ── */
 .copilot-chat-container {
@@ -275,6 +307,13 @@
   gap: 6px;
   padding-top: 8px;
   border-top: 1px solid var(--background-modifier-border);
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  margin: 0;
+  padding-left: 0;
+  padding-right: 0;
+  min-width: 0;
 }
 
 .copilot-mcp-server:first-child {
@@ -499,6 +538,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
 }
 
 /* ── Message Bubble ── */
@@ -510,11 +550,17 @@
 
 .copilot-system-message {
   align-self: center;
-  padding: 2px 0;
-  color: var(--text-faint);
+  max-width: 90%;
+  padding: 6px 12px;
+  margin: 4px 0;
+  color: var(--text-muted);
   font-size: 0.8rem;
+  font-style: italic;
   line-height: 1.4;
   text-align: center;
+  border-left: 2px solid var(--interactive-accent);
+  background: var(--background-secondary);
+  border-radius: 4px;
 }
 
 .copilot-message-header {
@@ -900,10 +946,10 @@
   background: var(--background-secondary);
   padding: 2px 8px;
   border-radius: 10px;
-  animation: copilot-pulse 1.5s ease-in-out infinite;
+  animation: copilot-thinking-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes copilot-pulse {
+@keyframes copilot-thinking-pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
@@ -1166,25 +1212,29 @@
   padding: 2px;
 }
 
-/* ── Status Badge ── */
+/* ── Status Badge (header connection indicator) ── */
 .copilot-status-badge {
+  display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  display: inline-block;
+  margin-left: 6px;
+  flex-shrink: 0;
 }
 
 .copilot-status-badge.connected {
-  background: var(--color-green);
-}
-
-.copilot-status-badge.disconnected {
-  background: var(--color-red);
+  background: var(--color-green, #3fb950);
+  box-shadow: 0 0 4px var(--color-green, #3fb950);
 }
 
 .copilot-status-badge.connecting {
-  background: var(--color-yellow);
-  animation: copilot-blink 1s step-end infinite;
+  background: var(--color-yellow, var(--text-muted));
+  animation: copilot-status-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes copilot-status-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
 }
 
 /* ── Permission Modal ── */
@@ -1219,19 +1269,14 @@
   font-size: 0.85em;
 }
 
-.copilot-permission-buttons,
 .copilot-permission-approve-row {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
   flex-wrap: wrap;
-}
-
-.copilot-permission-approve-row {
   margin-bottom: 8px;
 }
 
-.copilot-permission-buttons button,
 .copilot-permission-approve-row button {
   padding: 6px 16px;
   border-radius: 4px;
@@ -1278,31 +1323,6 @@
   border-color: var(--text-error);
 }
 
-/* ── Connection status badge ────────────────────────────── */
-.copilot-status-badge {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-left: 6px;
-  flex-shrink: 0;
-}
-
-.copilot-status-badge.connected {
-  background: var(--color-green, #3fb950);
-  box-shadow: 0 0 4px var(--color-green, #3fb950);
-}
-
-.copilot-status-badge.connecting {
-  background: var(--text-muted);
-  animation: copilot-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes copilot-pulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
-}
-
 /* ── Initializing spinner in EmptyState ─────────────────── */
 .copilot-initializing {
   display: flex;
@@ -1319,10 +1339,6 @@
   border-top-color: var(--interactive-accent);
   border-radius: 50%;
   animation: copilot-spin 0.8s linear infinite;
-}
-
-@keyframes copilot-spin {
-  to { transform: rotate(360deg); }
 }
 
 /* ── Code block copy button ─────────────────────────────── */
@@ -1357,10 +1373,6 @@
 }
 
 /* ── Jump-to-bottom button ──────────────────────────────── */
-.copilot-message-list {
-  position: relative;
-}
-
 .copilot-jump-bottom-btn {
   position: sticky;
   bottom: 8px;

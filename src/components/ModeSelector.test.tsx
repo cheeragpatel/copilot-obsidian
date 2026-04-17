@@ -40,4 +40,10 @@ describe("ModeSelector", () => {
 
     expect(onModeChange).toHaveBeenCalledWith(ChatMode.Ask);
   });
+
+  it("exposes an accessible name on the select", () => {
+    render(<ModeSelector currentMode={ChatMode.Ask} onModeChange={vi.fn()} />);
+
+    expect(screen.getByRole("combobox", { name: "Chat mode" })).toBeInTheDocument();
+  });
 });

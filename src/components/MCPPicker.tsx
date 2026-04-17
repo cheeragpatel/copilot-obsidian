@@ -12,6 +12,8 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) 
   const [isOpen, setIsOpen] = useState(false);
   const [expandedServers, setExpandedServers] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const firstFocusRef = useRef<HTMLButtonElement>(null);
 
   const enabledCount = mcpServers.filter((server) => server.enabled).length;
 
@@ -26,7 +28,9 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) 
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.stopPropagation();
         setIsOpen(false);
+        triggerRef.current?.focus();
       }
     };
 
@@ -36,6 +40,12 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) 
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleEscape);
     };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      firstFocusRef.current?.focus();
+    }
   }, [isOpen]);
 
   const handleToggleServer = useCallback(
@@ -66,6 +76,7 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) 
   return (
     <div className="copilot-mcp-picker" ref={containerRef}>
       <button
+        ref={triggerRef}
         type="button"
         className={`copilot-mcp-btn${enabledCount === 0 ? " is-muted" : ""}`}
         onClick={() => setIsOpen((open) => !open)}
@@ -79,12 +90,17 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) 
       </button>
 
       {isOpen && (
-        <div className="copilot-mcp-dropdown" role="dialog" aria-label="MCP Servers">
+        <div
+          className="copilot-mcp-dropdown"
+          role="group"
+          aria-labelledby="copilot-mcp-title"
+        >
           <div className="copilot-mcp-header">
-            <span>MCP Servers</span>
+            <span id="copilot-mcp-title">MCP Servers</span>
             <div style={{ display: "flex", gap: "4px" }}>
               {onRefresh && (
                 <button
+                  ref={firstFocusRef}
                   type="button"
                   className="copilot-mcp-close"
                   onClick={() => onRefresh()}
@@ -95,9 +111,13 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) 
                 </button>
               )}
               <button
+                ref={onRefresh ? undefined : firstFocusRef}
                 type="button"
                 className="copilot-mcp-close"
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setIsOpen(false);
+                  triggerRef.current?.focus();
+                }}
                 aria-label="Close MCP picker"
               >
                 ×
@@ -111,14 +131,18 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) 
               <span>Configure MCP servers in settings or Copilot config files.</span>
             </div>
           ) : (
-            <div className="copilot-mcp-server-list" role="listbox" aria-label="MCP Servers">
+            <div className="copilot-mcp-server-list">
               {mcpServers.map((serverState) => {
                 const serverName = serverState.server.name;
                 const source = serverState.source || serverState.server.source || "settings";
                 const isExpanded = expandedServers.includes(serverName);
+                const legendId = `copilot-mcp-server-${serverName}`;
 
                 return (
-                  <div className="copilot-mcp-server" key={serverName} role="option" aria-selected={serverState.enabled}>
+                  <fieldset className="copilot-mcp-server" key={serverName}>
+                    <legend id={legendId} className="copilot-sr-only">
+                      {serverName}
+                    </legend>
                     <div className="copilot-mcp-server-row">
                       <label className="copilot-mcp-server-main">
                         <input
@@ -141,6 +165,7 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) 
                           type="button"
                           className="copilot-mcp-expand-btn"
                           onClick={() => toggleExpanded(serverName)}
+                          aria-expanded={isExpanded}
                           aria-label={`${isExpanded ? "Collapse" : "Expand"} ${serverName} tools`}
                         >
                           {isExpanded ? "▾" : "▸"}
@@ -183,7 +208,7 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) 
                         )}
                       </div>
                     )}
-                  </div>
+                  </fieldset>
                 );
               })}
             </div>

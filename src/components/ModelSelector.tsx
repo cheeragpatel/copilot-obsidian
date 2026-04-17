@@ -25,6 +25,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange }) =
         className="copilot-model-select"
         value={currentModel}
         onChange={handleChange}
+        aria-label="Language model"
       >
         {models.map((model) => (
           <option key={model.id} value={model.id}>

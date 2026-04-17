@@ -166,4 +166,20 @@ describe("MessageBubble", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("renders a system message with the system class and note role", () => {
+    const { container } = render(
+      <MessageBubble
+        message={createMessage({ role: "system", content: "Session restored" })}
+      />,
+    );
+
+    const systemEl = container.querySelector(".copilot-system-message");
+    expect(systemEl).toBeInTheDocument();
+    expect(systemEl).toHaveTextContent("Session restored");
+    expect(screen.getByRole("note", { name: "System message" })).toBeInTheDocument();
+    // System messages should not show the user/assistant header chrome
+    expect(screen.queryByText("Copilot")).not.toBeInTheDocument();
+    expect(screen.queryByText("You")).not.toBeInTheDocument();
+  });
+
 });

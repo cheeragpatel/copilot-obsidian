@@ -39,4 +39,21 @@ describe("ChatHeader", () => {
 
     expect(onHistoryClick).toHaveBeenCalledTimes(1);
   });
+
+  it("exposes accessible names on icon-only buttons", () => {
+    renderWithContext(
+      <ChatHeader onNewConversation={vi.fn()} onHistoryClick={vi.fn()} />,
+    );
+
+    expect(screen.getByRole("button", { name: "New conversation" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Conversation history" })).toBeInTheDocument();
+  });
+
+  it("exposes connection status as a live region", () => {
+    renderWithContext(
+      <ChatHeader onNewConversation={vi.fn()} onHistoryClick={vi.fn()} isConnected />,
+    );
+
+    expect(screen.getByRole("status", { name: "Connected" })).toBeInTheDocument();
+  });
 });

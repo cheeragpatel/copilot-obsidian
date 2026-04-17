@@ -17,6 +17,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <h4 className="copilot-chat-header-title">Copilot</h4>
         <span
           className={`copilot-status-badge ${isConnected ? "connected" : "connecting"}`}
+          role="status"
+          aria-label={isConnected ? "Connected" : "Connecting"}
           title={isConnected ? "Connected" : "Connecting…"}
         />
       </div>
@@ -33,6 +35,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           className="copilot-chat-header-btn"
           onClick={onNewConversation}
           title="New conversation"
+          aria-label="New conversation"
         >
           +
         </button>

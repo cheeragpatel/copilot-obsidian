@@ -36,4 +36,12 @@ describe("EmptyState", () => {
 
     expect(onSuggestionClick).toHaveBeenCalledWith("/summarize");
   });
+
+  it("groups suggestions with an accessible label", () => {
+    renderEmptyState();
+
+    expect(
+      screen.getByRole("group", { name: "Suggested prompts" }),
+    ).toBeInTheDocument();
+  });
 });

@@ -100,7 +100,7 @@ describe("MCPPicker", () => {
     expect(screen.queryByText("MCP Servers")).not.toBeInTheDocument();
   });
 
-  it("renders ARIA attributes on the server list and server items", async () => {
+  it("renders ARIA group semantics with fieldset per server", async () => {
     const user = userEvent.setup();
 
     useChatStore.setState({
@@ -112,11 +112,31 @@ describe("MCPPicker", () => {
 
     await user.click(screen.getByRole("button", { name: "Configure MCP servers" }));
 
-    const listbox = screen.getByRole("listbox", { name: "MCP Servers" });
-    expect(listbox).toBeInTheDocument();
+    const group = screen.getByRole("group", { name: "MCP Servers" });
+    expect(group).toBeInTheDocument();
 
-    const option = screen.getByRole("option");
-    expect(option).toHaveAttribute("aria-selected", "true");
+    // Server checkbox is reachable by its accessible name
+    expect(screen.getByRole("checkbox", { name: /^docs$/i })).toBeChecked();
+  });
+
+  it("closes on Escape and restores focus to the trigger", async () => {
+    const user = userEvent.setup();
+
+    useChatStore.setState({
+      ...baseState,
+      mcpServers: [createMCPServer()],
+    });
+
+    render(<MCPPicker />);
+
+    const trigger = screen.getByRole("button", { name: "Configure MCP servers" });
+    await user.click(trigger);
+    expect(screen.getByText("MCP Servers")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByText("MCP Servers")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("renders server with no tools", async () => {

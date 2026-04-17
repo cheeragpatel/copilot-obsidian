@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useEffect, useRef } from "react";
 import type { ConversationMeta } from "../types/chat";
 
 interface ConversationHistoryProps {
@@ -12,15 +13,41 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   onSelect,
   onClose,
 }) => {
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    closeBtnRef.current?.focus();
+  }, []);
+
   return (
     <div className="copilot-conversations-overlay" onClick={onClose}>
       <div
         className="copilot-conversations-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="copilot-conversations-title"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="copilot-conversations-header">
-          <h3>Conversations</h3>
-          <button className="copilot-conversations-close-btn" onClick={onClose}>
+          <h3 id="copilot-conversations-title">Conversations</h3>
+          <button
+            ref={closeBtnRef}
+            type="button"
+            className="copilot-conversations-close-btn"
+            onClick={onClose}
+            aria-label="Close conversation history"
+          >
             ×
           </button>
         </div>
@@ -31,7 +58,8 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
             </div>
           ) : (
             conversations.map((conv) => (
-              <div
+              <button
+                type="button"
                 key={conv.sessionId}
                 className="copilot-conversation-item"
                 onClick={() => onSelect(conv.sessionId)}
@@ -45,7 +73,7 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
                     {new Date(conv.lastUpdated).toLocaleDateString()}
                   </span>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
