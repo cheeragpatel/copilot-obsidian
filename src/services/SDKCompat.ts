@@ -14,26 +14,6 @@ export function normalizeEventType(type: string): string {
   return EVENT_TYPE_MAP[type] ?? type;
 }
 
-export function parseToolName(raw: string): { serverName: string | undefined; toolName: string } {
-  if (raw.includes("/")) {
-    const slashIndex = raw.indexOf("/");
-    return {
-      serverName: raw.slice(0, slashIndex),
-      toolName: raw.slice(slashIndex + 1),
-    };
-  }
-
-  if (raw.includes("_")) {
-    const underscoreIndex = raw.indexOf("_");
-    return {
-      serverName: raw.slice(0, underscoreIndex),
-      toolName: raw.slice(underscoreIndex + 1),
-    };
-  }
-
-  return { serverName: undefined, toolName: raw };
-}
-
 export function normalizeToolInfo(
   eventData: any,
 ): { name: string; namespacedName?: string; description: string } | null {
@@ -83,37 +63,58 @@ export function normalizeToolInfo(
   };
 }
 
+/**
+ * Returns true for errors that indicate a transport/method is simply not
+ * supported by the current SDK build. Real RPC failures (network, validation,
+ * timeouts) should bubble up so callers can log and diagnose them.
+ */
+function isUnsupportedMethodError(error: unknown): boolean {
+  if (!error) return true;
+  if (error instanceof TypeError) {
+    return /is not a function|undefined/i.test(error.message || "");
+  }
+  const message = (error as { message?: string })?.message || "";
+  const code = (error as { code?: string | number })?.code;
+  if (code === -32601) return true; // JSON-RPC "Method not found"
+  return /method not found|not implemented|unsupported|unknown method/i.test(message);
+}
+
+/**
+ * Discover tools available to the current session. Tries server-scoped RPC
+ * first (where MCP tools are namespaced), then session-scoped RPC, then the
+ * session.listTools() helper. Each strategy is tried until one returns a
+ * non-empty result. Errors that look like "this transport doesn't expose
+ * the method" are swallowed; genuine RPC failures are rethrown so they
+ * surface in logs.
+ */
 export async function discoverTools(session: any, client: any): Promise<DiscoveredTool[]> {
-  const lookups: Array<() => any> = [
-    // Server-scoped RPC exposes the full tool list (including MCP tools with namespacedName).
-    // This is where tools.list actually lives in the real SDK — the session RPC only handles
-    // pending tool calls.
-    () => client?.rpc?.tools?.list?.({}),
-    () => session?.rpc?.tools?.list?.({}),
-    () => session?.listTools?.(),
-    () => session?.getTools?.(),
-    () => session?.tools?.(),
-    () => client?.listTools?.(),
-    () => client?.getTools?.(),
-    () => client?.tools?.(),
+  const strategies: Array<{ name: string; run: () => any }> = [
+    { name: "client.rpc.tools.list", run: () => client?.rpc?.tools?.list?.({}) },
+    { name: "session.rpc.tools.list", run: () => session?.rpc?.tools?.list?.({}) },
+    { name: "session.listTools", run: () => session?.listTools?.() },
   ];
 
-  for (const lookup of lookups) {
+  for (const strategy of strategies) {
+    let result: unknown;
     try {
-      const result = await lookup();
-      const tools = Array.isArray(result)
-        ? result
-        : Array.isArray(result?.tools)
-          ? result.tools
-          : [];
-
-      if (tools.length > 0) {
-        return tools
-          .map((t: any) => normalizeToolInfo(t))
-          .filter((t: DiscoveredTool | null): t is DiscoveredTool => t !== null);
+      result = await strategy.run();
+    } catch (error) {
+      if (isUnsupportedMethodError(error)) {
+        continue;
       }
-    } catch {
-      // Try the next lookup strategy
+      throw error;
+    }
+
+    const tools = Array.isArray(result)
+      ? result
+      : Array.isArray((result as { tools?: unknown })?.tools)
+        ? (result as { tools: unknown[] }).tools
+        : [];
+
+    if (tools.length > 0) {
+      return tools
+        .map((t: any) => normalizeToolInfo(t))
+        .filter((t: DiscoveredTool | null): t is DiscoveredTool => t !== null);
     }
   }
 

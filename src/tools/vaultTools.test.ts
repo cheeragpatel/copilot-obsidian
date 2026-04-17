@@ -8,11 +8,14 @@ vi.mock("@github/copilot-sdk", () => ({
 class TFile {
   path: string;
   basename: string;
+  extension: string;
   stat: { size: number; mtime: number; ctime: number };
 
   constructor(path: string) {
     this.path = path;
-    this.basename = path.split("/").pop()?.replace(".md", "") || "";
+    const name = path.split("/").pop() || "";
+    this.basename = name.replace(/\.[^.]+$/, "");
+    this.extension = name.includes(".") ? name.split(".").pop() || "" : "";
     this.stat = { size: 100, mtime: Date.now(), ctime: Date.now() };
   }
 }
@@ -488,6 +491,96 @@ describe("createVaultTools", () => {
       expect(result2).toEqual({ error: "Invalid path: must be relative to vault root without '..' segments" });
 
       expect(mockApp.vault.cachedRead).not.toHaveBeenCalled();
+    });
+
+    it("rejects hidden and forbidden directory paths", async () => {
+      const readNote = getTool("read_note");
+      const createNote = getTool("create_note");
+      const editNote = getTool("edit_note");
+      const getNoteMetadata = getTool("get_note_metadata");
+
+      const forbidden = [
+        ".obsidian/config.md",
+        ".git/HEAD.md",
+        ".copilot/agents/x.md",
+        ".trash/x.md",
+        ".config/x.md",
+        ".hidden.md",
+      ];
+      for (const path of forbidden) {
+        await expect(readNote.handler({ path })).resolves.toEqual(
+          expect.objectContaining({ error: expect.stringMatching(/Invalid path/) }),
+        );
+        await expect(createNote.handler({ path, content: "x" })).resolves.toEqual(
+          expect.objectContaining({ error: expect.stringMatching(/Invalid path/) }),
+        );
+        await expect(editNote.handler({ path, operation: "append", content: "x" })).resolves.toEqual(
+          expect.objectContaining({ error: expect.stringMatching(/Invalid path/) }),
+        );
+        await expect(getNoteMetadata.handler({ path })).resolves.toEqual(
+          expect.objectContaining({ error: expect.stringMatching(/Invalid path/) }),
+        );
+      }
+
+      expect(mockApp.vault.cachedRead).not.toHaveBeenCalled();
+      expect(mockApp.vault.create).not.toHaveBeenCalled();
+      expect(mockApp.vault.modify).not.toHaveBeenCalled();
+    });
+
+    it("rejects non-markdown file paths", async () => {
+      const readNote = getTool("read_note");
+      const createNote = getTool("create_note");
+      const editNote = getTool("edit_note");
+      const getNoteMetadata = getTool("get_note_metadata");
+
+      const cases = ["notes/secret.txt", "image.png", "data.json", "no-extension"];
+      for (const path of cases) {
+        await expect(readNote.handler({ path })).resolves.toEqual(
+          expect.objectContaining({ error: expect.stringMatching(/markdown/) }),
+        );
+        await expect(createNote.handler({ path, content: "x" })).resolves.toEqual(
+          expect.objectContaining({ error: expect.stringMatching(/markdown/) }),
+        );
+        await expect(editNote.handler({ path, operation: "append", content: "x" })).resolves.toEqual(
+          expect.objectContaining({ error: expect.stringMatching(/markdown/) }),
+        );
+        await expect(getNoteMetadata.handler({ path })).resolves.toEqual(
+          expect.objectContaining({ error: expect.stringMatching(/markdown/) }),
+        );
+      }
+    });
+
+    it("read_note rejects files whose extension is not md even when TFile resolves", async () => {
+      const file = new TFile("note.md");
+      // simulate a stale lookup where the resolved file isn't markdown
+      (file as any).extension = "txt";
+      mockApp.vault.getFileByPath.mockReturnValue(file);
+
+      const readNote = getTool("read_note");
+      const result = await readNote.handler({ path: "note.md" });
+      expect(result).toEqual(expect.objectContaining({ error: expect.stringMatching(/markdown/) }));
+      expect(mockApp.vault.cachedRead).not.toHaveBeenCalled();
+    });
+
+    it("accepts valid .md paths for read, edit, metadata", async () => {
+      const file = new TFile("Notes/foo.md");
+      mockApp.vault.getFileByPath.mockReturnValue(file);
+      mockApp.vault.cachedRead.mockResolvedValue("body");
+      mockApp.vault.read.mockResolvedValue("body");
+      mockApp.metadataCache.getFileCache.mockReturnValue({ frontmatter: { x: 1 } });
+
+      const readResult = await getTool("read_note").handler({ path: "Notes/foo.md" });
+      expect(readResult).toEqual({ path: "Notes/foo.md", content: "body" });
+
+      const editResult = await getTool("edit_note").handler({
+        path: "Notes/foo.md",
+        operation: "replace",
+        content: "next",
+      });
+      expect(editResult).toEqual({ edited: true, path: "Notes/foo.md", operation: "replace" });
+
+      const metaResult = await getTool("get_note_metadata").handler({ path: "Notes/foo.md" });
+      expect(metaResult).toMatchObject({ path: "Notes/foo.md", frontmatter: { x: 1 } });
     });
 
     it("list_notes handles empty folder path", async () => {
