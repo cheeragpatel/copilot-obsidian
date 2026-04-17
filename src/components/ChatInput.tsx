@@ -4,7 +4,7 @@ import { PluginContext } from "../views/CopilotChatView";
 import { useChatStore } from "../store/chatStore";
 import { getAvailableAgents } from "../store/agentSelectors";
 import { ChatMode } from "../types/constants";
-import { BUILT_IN_COMMANDS } from "../commands/SlashCommandRegistry";
+import { getAllCommands } from "../commands/SlashCommandRegistry";
 import {
   AutocompletePopup,
   autocompleteOptionId,
@@ -88,7 +88,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     const slashMatch = input.match(/^\/([\w-]*)$/);
     if (slashMatch) {
       const partial = slashMatch[1].toLowerCase();
-      const matches = BUILT_IN_COMMANDS.filter(
+      const matches = getAllCommands().filter(
         (cmd) =>
           cmd.name.startsWith(partial) ||
           cmd.description.toLowerCase().includes(partial),

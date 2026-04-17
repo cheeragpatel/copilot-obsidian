@@ -16,6 +16,8 @@ describe("src/types/settings", () => {
     excludedTools: true,
     systemMessage: true,
     logLevel: true,
+    autoIncludeCurrentNote: true,
+    exportFolder: true,
   };
 
   const expectedKeys = Object.keys(pluginSettingsKeyMap).sort();

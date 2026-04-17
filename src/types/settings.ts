@@ -35,6 +35,8 @@ export interface PluginSettings {
   excludedTools: string[];
   systemMessage: string;
   logLevel: "debug" | "info" | "warn" | "error";
+  autoIncludeCurrentNote: boolean;
+  exportFolder: string;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -51,4 +53,6 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   excludedTools: [],
   systemMessage: "",
   logLevel: "info",
+  autoIncludeCurrentNote: false,
+  exportFolder: "Copilot Chats",
 };

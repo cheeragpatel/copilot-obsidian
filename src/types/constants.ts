@@ -27,3 +27,9 @@ export const AVAILABLE_MODELS = [
 ] as const;
 
 export type ModelName = (typeof AVAILABLE_MODELS)[number] | string;
+
+// Workspace events emitted by the plugin so the React panel can react without
+// a direct plugin reference (avoids prop-drilling through the view).
+export const COPILOT_EVENT_NEW_CONVERSATION = "copilot-chat:new-conversation";
+export const COPILOT_EVENT_EXPORT_CONVERSATION = "copilot-chat:export-conversation";
+export const COPILOT_EVENT_SEND_PROMPT = "copilot-chat:send-prompt";
