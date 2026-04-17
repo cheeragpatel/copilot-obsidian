@@ -45,7 +45,10 @@ VAULT_PATH="${1:-}"
 
 if [[ -z "$VAULT_PATH" ]]; then
   bold "Looking for Obsidian vaults..."
-  mapfile -t VAULTS < <(find_vaults)
+  VAULTS=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && VAULTS+=("$line")
+  done < <(find_vaults)
 
   if [[ ${#VAULTS[@]} -eq 0 ]]; then
     die "No Obsidian vaults found. Please provide the vault path as an argument:
