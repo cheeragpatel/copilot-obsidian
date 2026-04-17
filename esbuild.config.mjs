@@ -38,13 +38,14 @@ const context = await esbuild.context({
   format: "cjs",
   target: "es2018",
   logLevel: "info",
-  sourcemap: prod ? false : "inline",
+  sourcemap: prod ? "external" : "inline",
   treeShaking: true,
   outfile: "main.js",
 });
 
 if (prod) {
   await context.rebuild();
+  await context.dispose();
   process.exit(0);
 } else {
   await context.watch();
