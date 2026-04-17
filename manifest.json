@@ -6,5 +6,6 @@
 	"description": "GitHub Copilot integration — chat, agent mode, slash commands, custom agents, and MCP support via the official Copilot SDK",
 	"author": "cheeragpatel",
 	"authorUrl": "https://github.com/cheeragpatel",
+	"helpUrl": "https://github.com/cheeragpatel/copilot-obsidian#readme",
 	"isDesktopOnly": true
 }

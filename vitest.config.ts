@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   test: {
@@ -25,8 +26,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      obsidian: new URL("./src/__mocks__/obsidian.ts", import.meta.url).pathname,
-      "@github/copilot-sdk": new URL("./src/__mocks__/copilot-sdk.ts", import.meta.url).pathname,
+      obsidian: fileURLToPath(new URL("./src/__mocks__/obsidian.ts", import.meta.url)),
+      "@github/copilot-sdk": fileURLToPath(new URL("./src/__mocks__/copilot-sdk.ts", import.meta.url)),
     },
   },
 });
