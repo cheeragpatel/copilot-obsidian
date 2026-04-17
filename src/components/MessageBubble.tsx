@@ -37,7 +37,7 @@ const CodeBlockCopyButton: React.FC<{ code: string }> = ({ code }) => {
   );
 };
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
+const MessageBubbleImpl: React.FC<MessageBubbleProps> = ({ message }) => {
   const [copied, setCopied] = useState(false);
   const ctx = useContext(PluginContext);
 
@@ -68,6 +68,38 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
 
     editor.replaceSelection(message.content);
   }, [ctx, message.content]);
+
+  // Memoize the markdown components map so ReactMarkdown doesn't see a fresh
+  // object every render (which would defeat its internal memoization).
+  const markdownComponents = useMemo(
+    () => ({
+      code({ node, className, children, ...props }: any) {
+        const match = /language-(\w+)/.exec(className || "");
+        const inline = !match && !className;
+        const codeStr = String(children).replace(/\n$/, "");
+        return !inline ? (
+          <div className="copilot-code-block-wrapper">
+            <CodeBlockCopyButton code={codeStr} />
+            <SyntaxHighlighter
+              language={match ? match[1] : "text"}
+              style={codeTheme}
+              PreTag="div"
+              {...props}
+            >
+              {codeStr}
+            </SyntaxHighlighter>
+          </div>
+        ) : (
+          <code className={className} {...props}>
+            {children}
+          </code>
+        );
+      },
+    }),
+    [codeTheme],
+  );
+
+  const remarkPlugins = useMemo(() => [remarkGfm], []);
 
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
@@ -133,31 +165,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
         )}
         {message.content ? (
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code({ node, className, children, ...props }: any) {
-                const match = /language-(\w+)/.exec(className || "");
-                const inline = !match && !className;
-                const codeStr = String(children).replace(/\n$/, "");
-                return !inline ? (
-                  <div className="copilot-code-block-wrapper">
-                    <CodeBlockCopyButton code={codeStr} />
-                    <SyntaxHighlighter
-                      language={match ? match[1] : "text"}
-                      style={codeTheme}
-                      PreTag="div"
-                      {...props}
-                    >
-                      {codeStr}
-                    </SyntaxHighlighter>
-                  </div>
-                ) : (
-                  <code className={className} {...props}>
-                    {children}
-                  </code>
-                );
-              },
-            }}
+            remarkPlugins={remarkPlugins}
+            components={markdownComponents}
           >
             {message.content}
           </ReactMarkdown>
@@ -167,3 +176,5 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
     </div>
   );
 };
+
+export const MessageBubble = React.memo(MessageBubbleImpl);
