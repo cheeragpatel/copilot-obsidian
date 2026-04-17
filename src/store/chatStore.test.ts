@@ -419,13 +419,14 @@ describe("useChatStore", () => {
       docs: {
         type: "http",
         url: "https://docs.example.com",
-        excludedTools: ["fetch"],
+        tools: ["search"],
       },
       local: {
         type: "stdio",
         command: "npx",
         args: ["@mcp/server"],
         env: { TOKEN: "secret" },
+        tools: ["*"],
       },
     });
   });

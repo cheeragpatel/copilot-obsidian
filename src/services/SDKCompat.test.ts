@@ -174,6 +174,34 @@ describe("normalizeToolInfo", () => {
 });
 
 describe("discoverTools", () => {
+  it("returns tools from client.rpc.tools.list (server-scoped RPC)", async () => {
+    const client = {
+      rpc: {
+        tools: {
+          list: vi.fn().mockResolvedValue({
+            tools: [
+              {
+                name: "list_resources",
+                namespacedName: "azure/list_resources",
+                description: "List Azure resources",
+              },
+            ],
+          }),
+        },
+      },
+    };
+
+    const tools = await discoverTools(null, client);
+    expect(tools).toEqual([
+      {
+        name: "list_resources",
+        namespacedName: "azure/list_resources",
+        description: "List Azure resources",
+      },
+    ]);
+    expect(client.rpc.tools.list).toHaveBeenCalledWith({});
+  });
+
   it("returns tools from session.rpc.tools.list", async () => {
     const session = {
       rpc: {

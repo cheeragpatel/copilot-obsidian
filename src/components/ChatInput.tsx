@@ -19,6 +19,7 @@ interface ChatInputProps {
   onModeSwitch: (mode: ChatMode) => void;
   onModelChange?: (model: string) => void;
   onMCPChange?: () => void;
+  onMCPRefresh?: () => void;
   onAddAgent?: (agent: CustomAgentEntry) => void;
   isLoading: boolean;
   canRetry?: boolean;
@@ -51,6 +52,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onModeSwitch,
   onModelChange,
   onMCPChange,
+  onMCPRefresh,
   onAddAgent,
   isLoading,
   canRetry,
@@ -442,7 +444,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       <div className="copilot-chat-controls">
         <ModeSelector currentMode={currentMode} onModeChange={onModeSwitch} />
         <ModelSelector onModelChange={onModelChange} />
-        <MCPPicker onMCPChange={onMCPChange} />
+        <MCPPicker onMCPChange={onMCPChange} onRefresh={onMCPRefresh} />
         <AgentPicker agents={customAgents} onAddAgent={onAddAgent} />
       </div>
       {input.length > 0 && (

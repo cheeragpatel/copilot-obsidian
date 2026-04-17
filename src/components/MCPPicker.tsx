@@ -4,9 +4,10 @@ import { useChatStore } from "../store/chatStore";
 
 interface MCPPickerProps {
   onMCPChange?: () => void;
+  onRefresh?: () => void;
 }
 
-export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange }) => {
+export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange, onRefresh }) => {
   const { mcpServers, toggleMCP, toggleMCPTool } = useChatStore();
   const [isOpen, setIsOpen] = useState(false);
   const [expandedServers, setExpandedServers] = useState<string[]>([]);
@@ -81,14 +82,27 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange }) => {
         <div className="copilot-mcp-dropdown" role="dialog" aria-label="MCP Servers">
           <div className="copilot-mcp-header">
             <span>MCP Servers</span>
-            <button
-              type="button"
-              className="copilot-mcp-close"
-              onClick={() => setIsOpen(false)}
-              aria-label="Close MCP picker"
-            >
-              ×
-            </button>
+            <div style={{ display: "flex", gap: "4px" }}>
+              {onRefresh && (
+                <button
+                  type="button"
+                  className="copilot-mcp-close"
+                  onClick={() => onRefresh()}
+                  aria-label="Refresh MCP tools"
+                  title="Refresh tool list"
+                >
+                  ↻
+                </button>
+              )}
+              <button
+                type="button"
+                className="copilot-mcp-close"
+                onClick={() => setIsOpen(false)}
+                aria-label="Close MCP picker"
+              >
+                ×
+              </button>
+            </div>
           </div>
 
           {mcpServers.length === 0 ? (
@@ -161,7 +175,11 @@ export const MCPPicker: React.FC<MCPPickerProps> = ({ onMCPChange }) => {
                             </label>
                           ))
                         ) : (
-                          <div className="copilot-mcp-tools-empty">No tools discovered</div>
+                          <div className="copilot-mcp-tools-empty">
+                            {serverState.enabled
+                              ? "Tools populate when first used. Send a message that calls this server to discover its tools."
+                              : "Enable this server to use its tools."}
+                          </div>
                         )}
                       </div>
                     )}

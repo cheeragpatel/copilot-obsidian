@@ -273,16 +273,19 @@ describe("CopilotChatPanel", () => {
           shared: {
             type: "http",
             url: "https://settings.example.com",
+            tools: ["*"],
           },
           "settings-only": {
             type: "stdio",
             command: "node",
             args: ["settings.js"],
             env: {},
+            tools: ["*"],
           },
           "vault-only": {
             type: "http",
             url: "https://vault-only.example.com",
+            tools: ["*"],
           },
           "home-only": {
             type: "http",
@@ -333,7 +336,7 @@ describe("CopilotChatPanel", () => {
           docs: {
             type: "http",
             url: "https://docs.example.com",
-            excludedTools: ["fetch"],
+            tools: ["search"],
           },
         },
       }),
@@ -352,6 +355,7 @@ describe("CopilotChatPanel", () => {
           docs: {
             type: "http",
             url: "https://docs.example.com",
+            tools: ["*"],
             excludedTools: ["search", "fetch"],
           },
         },

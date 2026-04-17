@@ -117,6 +117,11 @@ export const CopilotChatPanel: React.FC = () => {
   const discoverTools = useCallback(async () => {
     if (!ctx) return;
 
+    // Note: the Copilot CLI's `tools.list` RPC only returns builtin tools
+    // (bash, grep, etc). MCP tools are not included — they are only surfaced
+    // through `tool.execution_start` events when the server actually invokes
+    // them. So we list builtins once for completeness and rely on the event
+    // listener (below) to populate MCP tool entries as they get used.
     try {
       const tools = await ctx.copilotService.listTools();
       if (tools.length > 0) {
@@ -215,6 +220,23 @@ export const CopilotChatPanel: React.FC = () => {
           ctx.settings.defaultMode === ChatMode.Agent
             ? createVaultTools(ctx.app)
             : undefined;
+        // Redact any sensitive values (API keys, tokens) before logging.
+        const redactedMCPConfig = Object.fromEntries(
+          Object.entries(sessionMCPConfig).map(([name, cfg]: [string, any]) => [
+            name,
+            {
+              ...cfg,
+              ...(cfg.headers ? { headers: Object.fromEntries(Object.keys(cfg.headers).map((k) => [k, "<redacted>"])) } : {}),
+              ...(cfg.env && Object.keys(cfg.env).length > 0
+                ? { env: Object.fromEntries(Object.keys(cfg.env).map((k) => [k, "<redacted>"])) }
+                : {}),
+            },
+          ]),
+        );
+        // eslint-disable-next-line no-console
+        console.log("[copilot-obsidian] init: MCP servers configured:", Object.keys(redactedMCPConfig));
+        // eslint-disable-next-line no-console
+        console.debug("[copilot-obsidian] init: mcpConfig (redacted):", redactedMCPConfig);
         await ctx.copilotService.createSession({
           model: ctx.settings.defaultModel,
           mode: ctx.settings.defaultMode,
@@ -222,7 +244,9 @@ export const CopilotChatPanel: React.FC = () => {
           mcpServers: sessionMCPConfig,
         });
         setSessionId(ctx.copilotService.getSessionId());
-        await discoverTools();
+        // Kick off discovery but don't block init — it retries asynchronously
+        // as MCP servers come online.
+        discoverTools();
         setInitState("ready");
       } catch (err: any) {
         setInitState("error");
@@ -237,6 +261,15 @@ export const CopilotChatPanel: React.FC = () => {
     if (!ctx) return;
 
     const unsubscribe = ctx.copilotService.onEvent((event: any) => {
+      // Surface MCP server startup info/warnings to help diagnose missing tools.
+      if (
+        (event.type === "session.info" || event.type === "session.warning") &&
+        (event.data?.infoType === "mcp" || event.data?.warningType === "mcp")
+      ) {
+        // eslint-disable-next-line no-console
+        console.log("[copilot-obsidian] mcp event:", event.type, event.data);
+      }
+
       switch (event.type) {
         case "assistant.message_delta":
         case "assistant.message.delta": {
@@ -629,6 +662,7 @@ export const CopilotChatPanel: React.FC = () => {
         onModeSwitch={handleModeSwitch}
         onModelChange={handleModelChange}
         onMCPChange={handleMCPChange}
+        onMCPRefresh={discoverTools}
         onAddAgent={handleAddAgent}
         isLoading={isLoading}
         canRetry={canRetry}

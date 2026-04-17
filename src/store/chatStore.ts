@@ -326,12 +326,26 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       const enabledTools = tools.filter((tool) => tool.enabled).map((tool) => tool.name);
       const hasConfiguredTools = !!server.configTools?.length;
       const usesWildcardTools = !!server.configTools?.includes("*");
-      const toolConfig = hasConfiguredTools && !usesWildcardTools
-        ? { tools: enabledTools.length > 0 || tools.length > 0 ? enabledTools : server.configTools }
-        : {
-            ...(hasConfiguredTools ? { tools: server.configTools } : {}),
-            ...(disabledTools.length > 0 ? { excludedTools: disabledTools } : {}),
-          };
+
+      // The Copilot SDK requires `tools` on every MCP server config:
+      //   ["*"] = all tools, [] = none, ["a","b"] = explicit allowlist.
+      // Fall back to ["*"] so servers actually load when no tools are explicitly configured.
+      let toolsField: string[];
+      if (hasConfiguredTools && !usesWildcardTools) {
+        // User explicitly picked a subset via config file.
+        toolsField = enabledTools.length > 0 ? enabledTools : server.configTools!;
+      } else if (enabledTools.length > 0 && disabledTools.length > 0) {
+        // User toggled individual tools — pass only the enabled ones.
+        toolsField = enabledTools;
+      } else {
+        // Default: allow all tools from this server.
+        toolsField = ["*"];
+      }
+
+      const toolConfig: Record<string, any> = { tools: toolsField };
+      if (disabledTools.length > 0 && toolsField.includes("*")) {
+        toolConfig.excludedTools = disabledTools;
+      }
 
       if (server.type === "http" && server.url) {
         config[server.name] = {

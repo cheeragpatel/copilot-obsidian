@@ -85,6 +85,10 @@ export function normalizeToolInfo(
 
 export async function discoverTools(session: any, client: any): Promise<DiscoveredTool[]> {
   const lookups: Array<() => any> = [
+    // Server-scoped RPC exposes the full tool list (including MCP tools with namespacedName).
+    // This is where tools.list actually lives in the real SDK — the session RPC only handles
+    // pending tool calls.
+    () => client?.rpc?.tools?.list?.({}),
     () => session?.rpc?.tools?.list?.({}),
     () => session?.listTools?.(),
     () => session?.getTools?.(),
