@@ -433,4 +433,48 @@ describe("ConfigDiscovery", () => {
       expect.objectContaining({ name: "cross", url: "https://cross.example.com" }),
     ]);
   });
+
+  it("caches discovery results within the TTL window", async () => {
+    mockApp._addFolder(".github/skills");
+    mockApp._addFile(
+      ".github/copilot/mcp.json",
+      JSON.stringify({ servers: { repo: { type: "http", url: "https://repo.example.com" } } }),
+    );
+
+    const discovery = new ConfigDiscovery(mockApp as any);
+
+    const first = await discovery.discover();
+    const callsAfterFirst = mockApp.vault.getAbstractFileByPath.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThan(0);
+
+    const second = await discovery.discover();
+    expect(second).toBe(first);
+    expect(mockApp.vault.getAbstractFileByPath.mock.calls.length).toBe(callsAfterFirst);
+
+    discovery.invalidate();
+    await discovery.discover();
+    expect(mockApp.vault.getAbstractFileByPath.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+  });
+
+  it("skips MCP entries with missing required transport fields", async () => {
+    mockApp._addFile(
+      ".copilot/mcp.json",
+      JSON.stringify({
+        mcpServers: {
+          good: { type: "http", url: "https://ok.example.com" },
+          missingUrl: { type: "http" },
+          missingCommand: { type: "stdio" },
+          stdioOk: { type: "stdio", command: "echo" },
+        },
+      }),
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const discovery = new ConfigDiscovery(mockApp as any);
+    const config = await discovery.discover();
+
+    expect(config.mcpServers.map((s) => s.name).sort()).toEqual(["good", "stdioOk"]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("missingUrl"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("missingCommand"));
+  });
 });

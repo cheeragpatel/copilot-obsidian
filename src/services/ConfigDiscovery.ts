@@ -84,9 +84,19 @@ function parseFrontmatter(content: string): Record<string, string> {
 
 export class ConfigDiscovery {
   private app: App;
+  private cache?: { result: DiscoveredConfig; timestamp: number };
+  private static readonly CACHE_TTL_MS = 5000;
 
   constructor(app: App) {
     this.app = app;
+  }
+
+  /**
+   * Drop the cached discovery result so the next discover() call re-reads
+   * the filesystem. Called when settings change or files are added/removed.
+   */
+  invalidate(): void {
+    this.cache = undefined;
   }
 
   /**
@@ -108,6 +118,11 @@ export class ConfigDiscovery {
    *   $HOME/.copilot/agents/       — global personal agents (filesystem)
    */
   async discover(): Promise<DiscoveredConfig> {
+    const now = Date.now();
+    if (this.cache && now - this.cache.timestamp < ConfigDiscovery.CACHE_TTL_MS) {
+      return this.cache.result;
+    }
+
     const [skills, mcpServers, instructions, agents] = await Promise.all([
       this.discoverSkills(),
       this.discoverMCPServers(),
@@ -115,7 +130,9 @@ export class ConfigDiscovery {
       this.discoverAgents(),
     ]);
 
-    return { skills, mcpServers, instructions, agents };
+    const result = { skills, mcpServers, instructions, agents };
+    this.cache = { result, timestamp: now };
+    return result;
   }
 
   private async discoverSkills(): Promise<string[]> {
@@ -207,14 +224,29 @@ export class ConfigDiscovery {
           continue;
         }
 
-        seen.add(name);
         const entry = rawConfig && typeof rawConfig === "object" && !Array.isArray(rawConfig)
           ? rawConfig as RawMCPServerEntry
           : {};
 
+        const type: "stdio" | "http" =
+          (entry.type === "stdio" || entry.type === "local") ? "stdio" : "http";
+
+        // Validate transport requirements: an HTTP server needs a URL,
+        // a stdio server needs a command. Skip silently-broken entries
+        // so a typo in one server doesn't sink the whole config.
+        if (type === "http" && !entry.url) {
+          console.warn(`[Copilot] Skipping MCP server "${name}": http transport requires a url`);
+          continue;
+        }
+        if (type === "stdio" && !entry.command) {
+          console.warn(`[Copilot] Skipping MCP server "${name}": stdio transport requires a command`);
+          continue;
+        }
+
+        seen.add(name);
         servers.push({
           name,
-          type: (entry.type === "stdio" || entry.type === "local") ? "stdio" : "http",
+          type,
           url: entry.url,
           command: entry.command,
           args: asStringArray(entry.args),
@@ -309,13 +341,21 @@ export class ConfigDiscovery {
       try {
         if (fs.existsSync(pluginsDir)) {
           for (const org of fs.readdirSync(pluginsDir)) {
-            const orgPath = path.join(pluginsDir, org);
-            if (!fs.statSync(orgPath).isDirectory()) continue;
-            for (const plugin of fs.readdirSync(orgPath)) {
-              const agentsDir = path.join(orgPath, plugin, "agents");
-              if (fs.existsSync(agentsDir) && fs.statSync(agentsDir).isDirectory()) {
-                globalAgentDirs.push(agentsDir);
+            try {
+              const orgPath = path.join(pluginsDir, org);
+              if (!fs.statSync(orgPath).isDirectory()) continue;
+              for (const plugin of fs.readdirSync(orgPath)) {
+                try {
+                  const agentsDir = path.join(orgPath, plugin, "agents");
+                  if (fs.existsSync(agentsDir) && fs.statSync(agentsDir).isDirectory()) {
+                    globalAgentDirs.push(agentsDir);
+                  }
+                } catch {
+                  // Skip individual plugin scan errors
+                }
               }
+            } catch {
+              // Skip individual org scan errors
             }
           }
         }
