@@ -95,6 +95,31 @@ export class CopilotSettingsTab extends PluginSettingTab {
         }),
       );
 
+    new Setting(containerEl)
+      .setName("Auto-include current note in prompts")
+      .setDesc(
+        "When enabled, the active markdown note is wrapped into a context block sent with each message. Skip per-message via the chip above the input.",
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.autoIncludeCurrentNote).onChange(async (value) => {
+          this.settings.autoIncludeCurrentNote = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Conversation export folder")
+      .setDesc("Folder where 'Export Copilot Conversation to Note' writes new notes.")
+      .addText((text) =>
+        text
+          .setPlaceholder("Copilot Chats")
+          .setValue(this.settings.exportFolder)
+          .onChange(async (value) => {
+            this.settings.exportFolder = value.trim() || DEFAULT_SETTINGS.exportFolder;
+            await this.plugin.saveSettings();
+          }),
+      );
+
     // ── MCP Servers ──
     containerEl.createEl("h2", { text: "MCP Servers" });
     containerEl.createEl("p", {
@@ -192,6 +217,27 @@ export class CopilotSettingsTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         });
       });
+
+    // ── Inline Editor Commands ──
+    containerEl.createEl("h2", { text: "Inline Editor Commands" });
+    containerEl.createEl("p", {
+      text: "These commands operate on the current editor selection. Bind hotkeys via Settings → Hotkeys, or right-click a selection for the Copilot menu. Responses appear in the Copilot Chat panel (in-place replacement is planned).",
+      cls: "setting-item-description",
+    });
+    const inlineList = containerEl.createEl("ul");
+    for (const cmd of [
+      "Copilot: Rewrite selection",
+      "Copilot: Summarize selection",
+      "Copilot: Expand selection",
+      "Copilot: Explain selection",
+      "Copilot: Fix grammar in selection",
+    ]) {
+      const li = (inlineList as HTMLElement).ownerDocument?.createElement("li");
+      if (li) {
+        li.textContent = cmd;
+        (inlineList as HTMLElement).appendChild(li);
+      }
+    }
   }
 
   private renderMcpServersSection(containerEl: HTMLElement): void {

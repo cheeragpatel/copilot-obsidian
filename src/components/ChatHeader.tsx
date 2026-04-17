@@ -3,12 +3,14 @@ import * as React from "react";
 interface ChatHeaderProps {
   onNewConversation: () => void;
   onHistoryClick: () => void;
+  onExport?: () => void;
   isConnected?: boolean;
 }
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onNewConversation,
   onHistoryClick,
+  onExport,
   isConnected,
 }) => {
   return (
@@ -23,6 +25,16 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         />
       </div>
       <div className="copilot-chat-header-actions">
+        {onExport && (
+          <button
+            className="copilot-chat-header-btn"
+            onClick={onExport}
+            title="Export conversation to note"
+            aria-label="Export conversation to note"
+          >
+            ⬇
+          </button>
+        )}
         <button
           className="copilot-chat-header-btn"
           onClick={onHistoryClick}
