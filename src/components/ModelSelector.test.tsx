@@ -31,4 +31,10 @@ describe("ModelSelector", () => {
 
     expect(useChatStore.getState().currentModel).toBe("o4-mini");
   });
+
+  it("exposes an accessible name on the select", () => {
+    render(<ModelSelector />);
+
+    expect(screen.getByRole("combobox", { name: "Language model" })).toBeInTheDocument();
+  });
 });

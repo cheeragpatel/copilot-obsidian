@@ -47,6 +47,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({ agents, onAddAgent }) 
       <select
         className="copilot-agent-select"
         value={selectedAgent || ""}
+        aria-label="Custom agent"
         onChange={(e) => {
           if (e.target.value === "__add__") {
             setShowAddForm(true);

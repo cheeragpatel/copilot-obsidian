@@ -62,8 +62,8 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick, isIni
   const suggestions = useSmartSuggestions();
 
   return (
-    <div className="copilot-empty-state">
-      <div className="copilot-empty-icon">
+    <div className="copilot-empty-state" role="region" aria-label="Copilot welcome">
+      <div className="copilot-empty-icon" aria-hidden="true">
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -79,8 +79,8 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick, isIni
       </div>
       <h4 className="copilot-empty-title">GitHub Copilot for Obsidian</h4>
       {isInitializing ? (
-        <p className="copilot-empty-subtitle copilot-initializing">
-          <span className="copilot-init-spinner" />
+        <p className="copilot-empty-subtitle copilot-initializing" role="status">
+          <span className="copilot-init-spinner" aria-hidden="true" />
           Connecting to Copilot…
         </p>
       ) : (
@@ -88,14 +88,19 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onSuggestionClick, isIni
           <p className="copilot-empty-subtitle">
             Ask questions about your notes, or use /commands and @agents.
           </p>
-          <div className="copilot-empty-suggestions">
+          <div
+            className="copilot-empty-suggestions"
+            role="group"
+            aria-label="Suggested prompts"
+          >
             {suggestions.map((s) => (
               <button
                 key={s.label}
+                type="button"
                 className="copilot-suggestion-btn"
                 onClick={() => onSuggestionClick(s.prompt)}
               >
-                <span className="copilot-suggestion-icon">{s.icon}</span>
+                <span className="copilot-suggestion-icon" aria-hidden="true">{s.icon}</span>
                 {s.label}
               </button>
             ))}

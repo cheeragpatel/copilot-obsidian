@@ -66,4 +66,10 @@ describe("AgentPicker", () => {
 
     expect(useChatStore.getState().selectedAgent).toBeNull();
   });
+
+  it("exposes an accessible name on the select", () => {
+    render(<AgentPicker agents={[createAgent("writer")]} />);
+
+    expect(screen.getByRole("combobox", { name: "Custom agent" })).toBeInTheDocument();
+  });
 });

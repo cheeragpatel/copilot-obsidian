@@ -16,6 +16,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
         className="copilot-mode-select"
         value={currentMode}
         onChange={(e) => onModeChange(e.target.value as ChatMode)}
+        aria-label="Chat mode"
       >
         <option value={ChatMode.Ask}>Ask</option>
         <option value={ChatMode.Agent}>Agent</option>

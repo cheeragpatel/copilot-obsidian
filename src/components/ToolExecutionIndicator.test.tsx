@@ -36,4 +36,18 @@ describe("ToolExecutionIndicator", () => {
 
     expect(container.querySelectorAll(".copilot-tool-call")).toHaveLength(3);
   });
+
+  it("exposes the list of tool calls with ARIA roles", () => {
+    renderIndicator([
+      { id: "t7", name: "searchVault", status: "running" },
+      { id: "t8", name: "openNote", status: "complete" },
+    ]);
+
+    const list = screen.getByRole("list", { name: "Tool executions" });
+    expect(list).toBeInTheDocument();
+    const items = screen.getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveAttribute("aria-label", "searchVault: running");
+    expect(items[1]).toHaveAttribute("aria-label", "openNote: complete");
+  });
 });
