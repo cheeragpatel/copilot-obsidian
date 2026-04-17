@@ -63,6 +63,7 @@ describe("CopilotService", () => {
       skills: [],
       mcpServers: [],
       instructions: "",
+      agents: [],
     });
 
     mockClient.start.mockResolvedValue(undefined);
@@ -493,7 +494,7 @@ describe("CopilotService", () => {
     expect(service.getSessionId()).toBe("test-session-123");
   });
 
-  it("listTools() returns tools from session RPC and falls back to client methods", async () => {
+  it("listTools() returns tools from session RPC and falls back to session.listTools", async () => {
     const service = new CopilotService(createMockApp(), createSettings());
 
     await service.initialize();
@@ -517,8 +518,10 @@ describe("CopilotService", () => {
       },
     ]);
 
-    mockSession.rpc.tools.list.mockRejectedValueOnce(new Error("rpc unavailable"));
-    mockClient.listTools.mockResolvedValueOnce([
+    // When the primary RPC reports method-unsupported, discoverTools falls
+    // through to the session's listTools strategy (no client.listTools probe).
+    mockSession.rpc.tools.list.mockRejectedValueOnce(new Error("Method not found"));
+    (mockSession as any).listTools = vi.fn().mockResolvedValueOnce([
       {
         name: "list_resources",
         namespacedName: "azure/list_resources",
@@ -526,18 +529,22 @@ describe("CopilotService", () => {
       },
     ]);
 
-    await expect(service.listTools()).resolves.toEqual([
-      {
-        name: "list_resources",
-        namespacedName: "azure/list_resources",
-        description: "List Azure resources",
-      },
-      {
-        name: "query-docs",
-        namespacedName: "context7/query-docs",
-        description: "Query docs",
-      },
-    ]);
+    try {
+      await expect(service.listTools()).resolves.toEqual([
+        {
+          name: "list_resources",
+          namespacedName: "azure/list_resources",
+          description: "List Azure resources",
+        },
+        {
+          name: "query-docs",
+          namespacedName: "context7/query-docs",
+          description: "Query docs",
+        },
+      ]);
+    } finally {
+      delete (mockSession as any).listTools;
+    }
   });
 
   it("listTools() caches tools discovered from tool execution events", async () => {
@@ -552,8 +559,7 @@ describe("CopilotService", () => {
     await service.initialize();
     await service.createSession();
 
-    mockSession.rpc.tools.list.mockRejectedValueOnce(new Error("rpc unavailable"));
-    mockClient.listTools.mockRejectedValueOnce(new Error("client unavailable"));
+    mockSession.rpc.tools.list.mockRejectedValueOnce(new Error("Method not found"));
 
     sessionHandler?.({
       type: "tool.execution_start",
@@ -708,35 +714,34 @@ describe("CopilotService", () => {
 
   it("broadcasts synthetic error and idle events when client emits disconnect", async () => {
     let clientHandler: ((event: any) => void) | undefined;
-    const clientWithOn = {
-      ...mockClient,
-      on: vi.fn((callback: (event: any) => void) => {
-        clientHandler = callback;
-        return vi.fn();
-      }),
-    };
+    // The CopilotClient constructor in __mocks__/copilot-sdk merges mockClient
+    // into the instance, so adding `on` here surfaces it on the real client.
+    // Cleaned up at end so it doesn't leak into other tests.
+    (mockClient as any).on = vi.fn((callback: (event: any) => void) => {
+      clientHandler = callback;
+      return vi.fn();
+    });
 
-    mockClient.createSession.mockResolvedValue(mockSession);
+    try {
+      const service = new CopilotService(createMockApp(), createSettings());
+      await service.initialize();
+      await service.createSession();
 
-    const service = new CopilotService(createMockApp(), createSettings());
-    await service.initialize();
+      const listener = vi.fn();
+      service.onEvent(listener);
 
-    // Replace the client with one that has an `on` method
-    (service as any).client = clientWithOn;
-    await service.createSession();
+      clientHandler?.({ type: "disconnect", data: { message: "process exited" } });
 
-    const listener = vi.fn();
-    service.onEvent(listener);
-
-    clientHandler?.({ type: "disconnect", data: { message: "process exited" } });
-
-    expect(listener).toHaveBeenCalledTimes(2);
-    expect(listener).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "session.error" }),
-    );
-    expect(listener).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "session.idle" }),
-    );
+      expect(listener).toHaveBeenCalledTimes(2);
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "session.error" }),
+      );
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "session.idle" }),
+      );
+    } finally {
+      delete (mockClient as any).on;
+    }
   });
 
   it("normalizes camelCase event types from the SDK", async () => {
@@ -760,11 +765,10 @@ describe("CopilotService", () => {
   });
 
   describe("error recovery", () => {
-    // Known issue: attachSessionListener() registers a closure on the session
-    // that forwards events to this.eventListeners, but when the session is
-    // destroyed and recreated the old session's `on` callback still fires
-    // because the old session object isn't truly cleaned up.
-    it.skip("known issue: resets event listeners when session is recreated", async () => {
+    // The sessionRef guard inside attachSessionListener() prevents a stale
+    // callback (from a destroyed session that the SDK still holds onto) from
+    // forwarding events to UI listeners after we've replaced the session.
+    it("ignores events from a stale session after it has been replaced", async () => {
       const firstSession = createSessionMock({ sessionId: "session-1" });
       const secondSession = createSessionMock({ sessionId: "session-2" });
       mockClient.createSession.mockResolvedValueOnce(firstSession).mockResolvedValueOnce(secondSession);
@@ -804,11 +808,10 @@ describe("CopilotService", () => {
       await expect(service.sendMessage("Hello")).rejects.toThrow("network failure");
     });
 
-    it("listTools returns empty array when all discovery methods fail", async () => {
+    it("listTools returns empty array when all discovery strategies are unsupported", async () => {
       const bareSession = createSessionMock();
-      bareSession.rpc.tools.list.mockRejectedValue(new Error("rpc unavailable"));
+      bareSession.rpc.tools.list.mockRejectedValue(new Error("Method not found"));
       mockClient.createSession.mockResolvedValueOnce(bareSession);
-      mockClient.listTools.mockRejectedValue(new Error("client unavailable"));
 
       const service = new CopilotService(createMockApp(), createSettings());
       await service.initialize();
@@ -816,6 +819,22 @@ describe("CopilotService", () => {
 
       const tools = await service.listTools();
       expect(tools).toEqual([]);
+    });
+
+    it("listTools swallows real RPC errors and returns the cached set", async () => {
+      const bareSession = createSessionMock();
+      bareSession.rpc.tools.list.mockRejectedValue(new Error("network exploded"));
+      mockClient.createSession.mockResolvedValueOnce(bareSession);
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const service = new CopilotService(createMockApp(), createSettings());
+      await service.initialize();
+      await service.createSession();
+
+      const tools = await service.listTools();
+      expect(tools).toEqual([]);
+      expect(warnSpy).toHaveBeenCalled();
     });
   });
 });

@@ -3,7 +3,7 @@ import * as path from "path";
 import { CopilotClient, defineTool, SessionEvent } from "@github/copilot-sdk";
 import type { App } from "obsidian";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
-import type { PluginSettings, MCPServerEntry } from "../types/settings";
+import type { PluginSettings, MCPServerEntry, CustomAgentEntry } from "../types/settings";
 import type { FileAttachment } from "../types/chat";
 import { ConfigDiscovery } from "./ConfigDiscovery";
 import { promptPermission } from "../views/PermissionModal";
@@ -28,6 +28,9 @@ interface SessionOptions {
   systemMessage?: string;
 }
 
+const hasOwn = (obj: object, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(obj, key);
+
 export class CopilotService {
   private client: CopilotClient | null = null;
   private session: any = null;
@@ -37,6 +40,10 @@ export class CopilotService {
   private discoveredTools: Map<string, DiscoveredTool> = new Map();
   private currentMode: ChatMode;
   private unsubscribeSession?: () => void;
+  private unsubscribeClientHealth?: () => void;
+  // Serializes session creation/replacement so concurrent createSession()
+  // and resumeSession() calls don't interleave destroy+create steps.
+  private sessionLock: Promise<void> = Promise.resolve();
 
   constructor(app: App, settings: PluginSettings) {
     this.app = app;
@@ -56,7 +63,6 @@ export class CopilotService {
 
     const home = os.homedir();
 
-    // Common install locations on macOS / Linux / Windows
     const candidates = [
       "/opt/homebrew/bin/copilot",
       "/usr/local/bin/copilot",
@@ -68,7 +74,6 @@ export class CopilotService {
       `${process.env.APPDATA || ""}\\npm\\copilot.cmd`,
     ];
 
-    // Use Node's require('fs') via Electron's Node integration
     try {
       const fs = window.require("fs");
       for (const candidate of candidates) {
@@ -124,20 +129,82 @@ export class CopilotService {
   async initialize(): Promise<void> {
     try {
       const cliPath = this.resolveCliPath();
-
-      // Electron doesn't inherit the user's shell PATH, so node/copilot
-      // aren't found. Augment PATH with common bin directories.
       this.ensurePath();
 
-      this.client = new CopilotClient({
+      const client = new CopilotClient({
         cliPath,
         logLevel: this.settings.logLevel === "warn" ? "warning" : this.settings.logLevel,
       });
-      await this.client.start();
+      // Only commit the client to instance state once start() succeeds, so a
+      // failed initialize doesn't leave a half-constructed client around.
+      await client.start();
+      this.client = client;
+
+      this.attachClientHealthListener();
     } catch (error) {
       console.error("[Copilot] Failed to initialize client:", (error as Error)?.message || "Unknown error");
       throw error;
     }
+  }
+
+  /**
+   * Subscribe once to client-level disconnect/error events so a CLI crash
+   * fans out a synthetic session.error + session.idle to UI listeners. The
+   * registration lives for the lifetime of this CopilotService — re-attaching
+   * per session would leak handlers on the long-lived client object.
+   */
+  private attachClientHealthListener(): void {
+    if (!this.client || typeof (this.client as any).on !== "function") return;
+
+    const unsubscribe = (this.client as any).on((event: any) => {
+      const type = typeof event?.type === "string" ? event.type : "";
+      if (type !== "error" && type !== "disconnect") return;
+
+      const errorEvent = {
+        type: "session.error",
+        data: { message: `CLI process ${type}: ${event?.data?.message || "unknown"}` },
+      } as SessionEvent;
+      const idleEvent = { type: "session.idle", data: {} } as SessionEvent;
+
+      for (const listener of this.eventListeners) {
+        listener(errorEvent);
+        listener(idleEvent);
+      }
+    });
+
+    if (typeof unsubscribe === "function") {
+      this.unsubscribeClientHealth = unsubscribe;
+    }
+  }
+
+  /**
+   * Replace the active session atomically. Callers pass a factory that
+   * builds the new session. This serializes through `sessionLock` so two
+   * concurrent createSession()/resumeSession() calls cannot interleave the
+   * destroy of the previous session with the construction of the next.
+   */
+  private replaceSession(factory: () => Promise<any>): Promise<void> {
+    const next = this.sessionLock.then(async () => {
+      if (this.session) {
+        this.unsubscribeSession?.();
+        this.unsubscribeSession = undefined;
+        try {
+          await this.session.destroy();
+        } catch {
+          // Ignore session cleanup errors
+        }
+        this.session = null;
+      }
+
+      this.discoveredTools.clear();
+
+      const created = await factory();
+      this.session = created;
+      this.attachSessionListener();
+    });
+
+    this.sessionLock = next.catch(() => {});
+    return next;
   }
 
   async createSession(options: SessionOptions = {}): Promise<void> {
@@ -145,44 +212,33 @@ export class CopilotService {
       throw new Error("CopilotClient not initialized. Call initialize() first.");
     }
 
-    // Destroy existing session if any
-    if (this.session) {
-      this.unsubscribeSession?.();
-      this.unsubscribeSession = undefined;
-      try {
-        await this.session.destroy();
-      } catch {
-        // Ignore cleanup errors
-      }
-    }
+    const model = options.model ?? this.settings.defaultModel ?? DEFAULT_MODEL;
+    const mode = options.mode ?? this.currentMode;
 
-    this.discoveredTools.clear();
-
-    const model = options.model || this.settings.defaultModel || DEFAULT_MODEL;
-    const mode = options.mode || this.currentMode;
-    this.currentMode = mode;
-
-    // Auto-discover config from .github/ and .copilot/ directories
-    let discoveredConfig = {
-      skills: [] as string[],
-      mcpServers: [] as any[],
-      instructions: "",
-    };
+    let discoveredConfig: {
+      skills: string[];
+      mcpServers: any[];
+      instructions: string;
+      agents: CustomAgentEntry[];
+    } = { skills: [], mcpServers: [], instructions: "", agents: [] };
 
     if (this.settings.inheritConfig) {
       const discovery = new ConfigDiscovery(this.app);
-      discoveredConfig = await discovery.discover();
+      const result = await discovery.discover();
+      discoveredConfig = {
+        skills: result.skills ?? [],
+        mcpServers: result.mcpServers ?? [],
+        instructions: result.instructions ?? "",
+        agents: result.agents ?? [],
+      };
     }
 
-    const hasExplicitMCPServers = Object.prototype.hasOwnProperty.call(options, "mcpServers");
+    const hasExplicitMCPServers = hasOwn(options, "mcpServers");
 
-    // Build MCP server config from settings unless the caller provided an explicit selection.
     const mcpServers = hasExplicitMCPServers
       ? { ...(options.mcpServers || {}) }
       : this.buildMCPConfig();
 
-    // Merge discovered MCP servers (settings take precedence by name) unless the caller
-    // already provided the exact MCP set to use for this session.
     if (!hasExplicitMCPServers) {
       for (const discovered of discoveredConfig.mcpServers) {
         if (!mcpServers[discovered.name]) {
@@ -199,49 +255,66 @@ export class CopilotService {
       ...discoveredConfig.skills,
     ])];
 
-    // Build custom agents config
-    const customAgents = options.customAgents || this.buildAgentsConfig();
+    // Custom agents: settings/options take precedence; discovered agents
+    // fill in by name. Use hasOwnProperty so callers can pass [] to clear.
+    const baseAgents = hasOwn(options, "customAgents")
+      ? (options.customAgents ?? [])
+      : this.buildAgentsConfig();
+    const seenAgentNames = new Set<string>(baseAgents.map((a: any) => a?.name).filter(Boolean));
+    const mergedAgents = [...baseAgents];
+    for (const agent of discoveredConfig.agents) {
+      if (!agent || seenAgentNames.has(agent.name)) continue;
+      seenAgentNames.add(agent.name);
+      mergedAgents.push({
+        name: agent.name,
+        displayName: agent.displayName,
+        description: agent.description,
+        prompt: agent.prompt,
+      });
+    }
 
-    // Build session config
     const sessionConfig: any = {
       model,
       streaming: this.settings.streaming,
       onPermissionRequest: (request: any) => promptPermission(this.app, request),
     };
 
-    // Add tools in agent mode
     if (mode === ChatMode.Agent && options.tools) {
       sessionConfig.tools = options.tools;
     }
 
-    // Add MCP servers if configured
     if (Object.keys(mcpServers).length > 0) {
       sessionConfig.mcpServers = mcpServers;
     }
 
-    // Add custom agents if configured
-    if (customAgents.length > 0) {
-      sessionConfig.customAgents = customAgents;
+    if (mergedAgents.length > 0) {
+      sessionConfig.customAgents = mergedAgents;
     }
 
-    // Add skill directories
-    const skillDirectories = options.skillDirectories || allSkillDirs;
+    const skillDirectories = hasOwn(options, "skillDirectories")
+      ? (options.skillDirectories ?? [])
+      : allSkillDirs;
     if (skillDirectories.length > 0) {
       sessionConfig.skillDirectories = skillDirectories;
     }
 
-    // Add disabled skills
-    if (this.settings.disabledSkills.length > 0) {
-      sessionConfig.disabledSkills = options.disabledSkills || this.settings.disabledSkills;
+    const disabledSkills = hasOwn(options, "disabledSkills")
+      ? (options.disabledSkills ?? [])
+      : this.settings.disabledSkills;
+    if (disabledSkills.length > 0) {
+      sessionConfig.disabledSkills = disabledSkills;
     }
 
-    // Add excluded tools
-    if (this.settings.excludedTools.length > 0) {
-      sessionConfig.excludedTools = options.excludedTools || this.settings.excludedTools;
+    const excludedTools = hasOwn(options, "excludedTools")
+      ? (options.excludedTools ?? [])
+      : this.settings.excludedTools;
+    if (excludedTools.length > 0) {
+      sessionConfig.excludedTools = excludedTools;
     }
 
-    // Add system message
-    const systemMsg = options.systemMessage || this.settings.systemMessage;
+    const systemMsg = hasOwn(options, "systemMessage")
+      ? (options.systemMessage ?? "")
+      : this.settings.systemMessage;
     const combinedSystemMsg = [discoveredConfig.instructions, systemMsg]
       .filter(Boolean)
       .join("\n\n");
@@ -253,8 +326,15 @@ export class CopilotService {
       };
     }
 
-    this.session = await this.client.createSession(sessionConfig);
-    this.attachSessionListener();
+    await this.replaceSession(async () => {
+      if (!this.client) {
+        throw new Error("CopilotClient not initialized.");
+      }
+      return this.client.createSession(sessionConfig);
+    });
+
+    // Mode reflects the active session, so update only after it's wired.
+    this.currentMode = mode;
   }
 
   async sendMessage(prompt: string, attachments?: FileAttachment[]): Promise<void> {
@@ -298,7 +378,6 @@ export class CopilotService {
   }
 
   async switchMode(mode: ChatMode, tools?: ReturnType<typeof defineTool>[]): Promise<void> {
-    this.currentMode = mode;
     await this.createSession({ mode, tools });
   }
 
@@ -311,11 +390,16 @@ export class CopilotService {
   }
 
   async listTools(): Promise<DiscoveredTool[]> {
-    const tools = await sdkDiscoverTools(this.session, this.client);
-    if (tools.length > 0) {
+    try {
+      const tools = await sdkDiscoverTools(this.session, this.client);
       return this.rememberDiscoveredTools(tools);
+    } catch (error) {
+      console.warn(
+        "[Copilot] Tool discovery failed:",
+        (error as Error)?.message || error,
+      );
+      return this.rememberDiscoveredTools([]);
     }
-    return this.rememberDiscoveredTools([]);
   }
 
   async resumeSession(sessionId: string, tools?: ReturnType<typeof defineTool>[]): Promise<void> {
@@ -323,14 +407,15 @@ export class CopilotService {
       throw new Error("CopilotClient not initialized.");
     }
 
-    this.discoveredTools.clear();
-
-    this.session = await this.client.resumeSession(sessionId, {
-      tools: tools || [],
-      onPermissionRequest: (request: any) => promptPermission(this.app, request),
+    await this.replaceSession(async () => {
+      if (!this.client) {
+        throw new Error("CopilotClient not initialized.");
+      }
+      return this.client.resumeSession(sessionId, {
+        tools: tools || [],
+        onPermissionRequest: (request: any) => promptPermission(this.app, request),
+      });
     });
-
-    this.attachSessionListener();
   }
 
   async listSessions(): Promise<any[]> {
@@ -365,7 +450,14 @@ export class CopilotService {
   private attachSessionListener(): void {
     if (!this.session?.on) return;
 
+    // Capture the specific session this listener belongs to. If the session
+    // is later replaced and the SDK leaks events from the destroyed object,
+    // the staleness guard prevents forwarding them to UI listeners.
+    const sessionRef = this.session;
+
     this.unsubscribeSession = this.session.on((event: SessionEvent) => {
+      if (this.session !== sessionRef) return;
+
       const normalized: SessionEvent = {
         ...event,
         type: normalizeEventType(event.type),
@@ -383,30 +475,6 @@ export class CopilotService {
         listener(normalized);
       }
     });
-
-    // CLI crash detection: if the client exposes process health monitoring,
-    // listen for error/disconnect and broadcast synthetic events so UI
-    // loading state resets.
-    if (this.client && typeof (this.client as any).on === "function") {
-      (this.client as any).on((event: any) => {
-        const type = typeof event?.type === "string" ? event.type : "";
-        if (type === "error" || type === "disconnect") {
-          const errorEvent = {
-            type: "session.error",
-            data: { message: `CLI process ${type}: ${event?.data?.message || "unknown"}` },
-          } as SessionEvent;
-          const idleEvent = { type: "session.idle", data: {} } as SessionEvent;
-
-          for (const listener of this.eventListeners) {
-            listener(errorEvent);
-            listener(idleEvent);
-          }
-        }
-      });
-    }
-    // NOTE: If the SDK does not expose a client.on() health monitoring API,
-    // CLI crashes without session.error will leave isLoading stuck. A
-    // heartbeat/polling mechanism would be needed to detect this.
   }
 
   private rememberDiscoveredTools(tools: any[]): DiscoveredTool[] {
@@ -481,6 +549,9 @@ export class CopilotService {
   async destroy(): Promise<void> {
     this.unsubscribeSession?.();
     this.unsubscribeSession = undefined;
+
+    this.unsubscribeClientHealth?.();
+    this.unsubscribeClientHealth = undefined;
 
     try {
       if (this.session) {
