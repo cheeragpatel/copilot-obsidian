@@ -11,7 +11,7 @@ import {
 import type { PluginSettings } from "./types/settings";
 import { DEFAULT_SETTINGS } from "./types/settings";
 import { normalizeSettings } from "./types/settings.normalize";
-import { clearSessionPermissions } from "./views/PermissionModal";
+import { clearSessionPermissions, setAutopilot } from "./views/PermissionModal";
 import { registerInlineEditorCommands } from "./features/InlineEditorCommands";
 
 export default class CopilotPlugin extends Plugin {
@@ -79,8 +79,10 @@ export default class CopilotPlugin extends Plugin {
   }
 
   async onunload() {
-    // Clear session-scoped permission cache
+    // Clear session-scoped permission cache and reset autopilot flag so a
+    // reload doesn't silently keep auto-approval on.
     clearSessionPermissions();
+    setAutopilot(false);
 
     // Clean up the copilot service
     if (this.copilotService) {

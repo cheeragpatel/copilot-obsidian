@@ -4,6 +4,7 @@ import {
   COPILOT_CHAT_VIEW_TYPE,
   DEFAULT_MODEL,
   PLUGIN_ID,
+  toCliAgentMode,
 } from "./constants";
 
 describe("src/types/constants", () => {
@@ -11,11 +12,18 @@ describe("src/types/constants", () => {
     const chatModeValues = Object.values(ChatMode);
 
     expect(chatModeValues).toEqual(
-      expect.arrayContaining([ChatMode.Ask, ChatMode.Agent]),
+      expect.arrayContaining([ChatMode.Ask, ChatMode.Agent, ChatMode.Autopilot]),
     );
     expect(ChatMode.Ask).toBe("ask");
     expect(ChatMode.Agent).toBe("agent");
-    expect(new Set(chatModeValues).size).toBe(2);
+    expect(ChatMode.Autopilot).toBe("autopilot");
+    expect(new Set(chatModeValues).size).toBe(3);
+  });
+
+  it("maps UI chat modes to CLI agent modes", () => {
+    expect(toCliAgentMode(ChatMode.Ask)).toBe("interactive");
+    expect(toCliAgentMode(ChatMode.Agent)).toBe("interactive");
+    expect(toCliAgentMode(ChatMode.Autopilot)).toBe("autopilot");
   });
 
   it("exports a default model as a defined string", () => {

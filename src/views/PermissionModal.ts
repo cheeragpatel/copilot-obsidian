@@ -13,22 +13,71 @@ interface ApprovalResult {
 }
 
 /**
- * Build a key to identify a permission request for caching purposes.
- * Combines the kind with relevant detail fields (command, path, url, tool, server).
+ * Build a stable key for a permission request so cached approvals match on
+ * subsequent identical prompts.
+ *
+ * Earlier versions only inspected a handful of well-known fields
+ * (command/path/url/tool/server/name). When the SDK started sending requests
+ * with other identifying fields (filePath, arguments, args, toolName,
+ * serverName, …) those requests collapsed onto the same key — so "Allow This
+ * Session" either never matched or matched too aggressively.
+ *
+ * We now serialize *all* fields except request-instance noise (the per-call
+ * id, timestamps, etc.) so identical requests always produce identical keys.
  */
+const NOISE_FIELDS = new Set([
+  "kind",
+  "toolCallId",
+  "toolcallid",
+  "tool_call_id",
+  "requestId",
+  "requestid",
+  "request_id",
+  "id",
+  "timestamp",
+  "createdAt",
+  "created_at",
+]);
+
 function permissionKey(request: { kind: string; [key: string]: unknown }): string {
-  const parts = [request.kind];
-  for (const field of ["command", "path", "url", "tool", "server", "name"]) {
-    if (typeof request[field] === "string") {
-      parts.push(`${field}=${request[field]}`);
-    }
-  }
-  return parts.join("|");
+  const entries = Object.keys(request)
+    .filter((key) => !NOISE_FIELDS.has(key))
+    .sort()
+    .map((key) => {
+      const value = request[key];
+      const serialized =
+        value === null || value === undefined
+          ? ""
+          : typeof value === "string"
+            ? value
+            : JSON.stringify(value);
+      return `${key}=${serialized}`;
+    });
+  return [request.kind, ...entries].join("|");
 }
+
+/** Exported for tests — do not use directly in production code. */
+export const __permissionKeyForTests = permissionKey;
 
 // In-memory caches — session cache resets when plugin reloads, permanent persists to localStorage
 const sessionAllowed = new Set<string>();
+let autopilotEnabled = false;
 const PERMANENT_KEY = "copilot-permanent-permissions";
+
+/**
+ * Toggle autopilot mode for the host-side permission handler. When enabled,
+ * every incoming permission request is auto-approved without prompting. The
+ * SDK/CLI also has its own "autopilot" agent mode (set on the session) which
+ * normally prevents `onPermissionRequest` from firing at all — this flag is
+ * the host-side belt-and-suspenders for SDK/CLI versions that still call back.
+ */
+export function setAutopilot(enabled: boolean): void {
+  autopilotEnabled = enabled;
+}
+
+export function isAutopilot(): boolean {
+  return autopilotEnabled;
+}
 
 function loadPermanentPermissions(): Set<string> {
   try {
@@ -193,6 +242,11 @@ export function promptPermission(
   app: App,
   request: { kind: string; [key: string]: unknown },
 ): Promise<{ kind: "approved" } | { kind: "denied-by-rules"; rules: unknown[] }> {
+  // Autopilot bypass — auto-approve before any cache lookup or modal.
+  if (autopilotEnabled) {
+    return Promise.resolve({ kind: "approved" });
+  }
+
   const key = permissionKey(request);
 
   // Check permanent allowances first

@@ -4,6 +4,12 @@ export const COPILOT_CHAT_VIEW_TYPE = "copilot-chat-view";
 export enum ChatMode {
   Ask = "ask",
   Agent = "agent",
+  Autopilot = "autopilot",
+}
+
+/** Map a UI ChatMode to the CLI's underlying agent mode. */
+export function toCliAgentMode(mode: ChatMode): "interactive" | "autopilot" {
+  return mode === ChatMode.Autopilot ? "autopilot" : "interactive";
 }
 
 export const DEFAULT_MODEL = "claude-sonnet-4.6";

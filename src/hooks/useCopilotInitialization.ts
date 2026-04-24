@@ -61,7 +61,10 @@ export function useCopilotInitialization(
       const state = useChatStore.getState();
       const model = overrides.model ?? state.currentModel;
       const mode = overrides.mode ?? state.currentMode;
-      const tools = mode === ChatMode.Agent ? createVaultTools(ctx.app) : undefined;
+      const tools =
+        mode === ChatMode.Agent || mode === ChatMode.Autopilot
+          ? createVaultTools(ctx.app)
+          : undefined;
 
       await ctx.copilotService.createSession({
         model,
@@ -121,7 +124,8 @@ export function useCopilotInitialization(
         }
 
         const tools =
-          ctx.settings.defaultMode === ChatMode.Agent
+          ctx.settings.defaultMode === ChatMode.Agent ||
+          ctx.settings.defaultMode === ChatMode.Autopilot
             ? createVaultTools(ctx.app)
             : undefined;
 

@@ -2,11 +2,11 @@ import * as os from "os";
 import * as path from "path";
 import { CopilotClient, defineTool, SessionEvent } from "@github/copilot-sdk";
 import type { App } from "obsidian";
-import { ChatMode, DEFAULT_MODEL } from "../types/constants";
+import { ChatMode, DEFAULT_MODEL, toCliAgentMode } from "../types/constants";
 import type { PluginSettings, MCPServerEntry, CustomAgentEntry } from "../types/settings";
 import type { FileAttachment } from "../types/chat";
 import { ConfigDiscovery } from "./ConfigDiscovery";
-import { promptPermission } from "../views/PermissionModal";
+import { promptPermission, setAutopilot } from "../views/PermissionModal";
 import {
   discoverTools as sdkDiscoverTools,
   normalizeToolInfo,
@@ -279,7 +279,7 @@ export class CopilotService {
       onPermissionRequest: (request: any) => promptPermission(this.app, request),
     };
 
-    if (mode === ChatMode.Agent && options.tools) {
+    if ((mode === ChatMode.Agent || mode === ChatMode.Autopilot) && options.tools) {
       sessionConfig.tools = options.tools;
     }
 
@@ -335,6 +335,11 @@ export class CopilotService {
 
     // Mode reflects the active session, so update only after it's wired.
     this.currentMode = mode;
+
+    // Push the CLI-side agent mode (interactive vs. autopilot). Autopilot
+    // tells the CLI to auto-approve tool execution rather than firing
+    // onPermissionRequest callbacks.
+    await this.applyCliAgentMode(mode);
   }
 
   async sendMessage(prompt: string, attachments?: FileAttachment[]): Promise<void> {
@@ -416,6 +421,36 @@ export class CopilotService {
         onPermissionRequest: (request: any) => promptPermission(this.app, request),
       });
     });
+
+    // Re-apply the desired CLI agent mode to the resumed session — the CLI
+    // does not necessarily restore the previous mode for resumed sessions.
+    await this.applyCliAgentMode(this.currentMode);
+  }
+
+  /**
+   * Push the UI mode down to the CLI agent mode (interactive | autopilot).
+   * Best-effort: older CLI/SDK versions may not expose the rpc.mode hook,
+   * in which case we silently fall back to interactive (with permission
+   * prompts) rather than failing session creation.
+   */
+  private async applyCliAgentMode(mode: ChatMode): Promise<void> {
+    const cliMode = toCliAgentMode(mode);
+    // Mirror the mode into the host-side permission handler so any prompts
+    // the CLI still emits (older versions, MCP-only requests) get auto-approved
+    // when the user has chosen autopilot.
+    setAutopilot(cliMode === "autopilot");
+
+    const setter = this.session?.rpc?.mode?.set;
+    if (typeof setter !== "function") return;
+
+    try {
+      await setter.call(this.session.rpc.mode, { mode: cliMode });
+    } catch (error) {
+      console.warn(
+        "[Copilot] Failed to set CLI agent mode:",
+        (error as Error)?.message || error,
+      );
+    }
   }
 
   async listSessions(): Promise<any[]> {

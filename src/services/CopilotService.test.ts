@@ -837,4 +837,88 @@ describe("CopilotService", () => {
       expect(warnSpy).toHaveBeenCalled();
     });
   });
+
+  describe("autopilot / CLI agent mode", () => {
+    const sessionWithMode = (modeSet: ReturnType<typeof vi.fn>) => ({
+      sessionId: "mode-session",
+      rpc: {
+        tools: { list: vi.fn().mockResolvedValue({ tools: [] }) },
+        mode: { set: modeSet, get: vi.fn() },
+      },
+      on: vi.fn().mockReturnValue(vi.fn()),
+      send: vi.fn().mockResolvedValue(undefined),
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: "" } }),
+      abort: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn().mockResolvedValue(undefined),
+      getMessages: vi.fn().mockResolvedValue([]),
+    });
+
+    it("createSession() in Autopilot mode wires session tools and pushes 'autopilot' to the CLI", async () => {
+      const modeSet = vi.fn().mockResolvedValue({ mode: "autopilot" });
+      mockClient.createSession.mockResolvedValueOnce(sessionWithMode(modeSet));
+
+      const service = new CopilotService(createMockApp(), createSettings());
+      const tool = createTool("search", "Search notes");
+
+      await service.initialize();
+      await service.createSession({ mode: ChatMode.Autopilot, tools: [tool] });
+
+      expect(mockClient.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ tools: [tool] }),
+      );
+      expect(modeSet).toHaveBeenCalledWith({ mode: "autopilot" });
+      expect(service.getMode()).toBe(ChatMode.Autopilot);
+    });
+
+    it("createSession() in Agent mode pushes 'interactive' to the CLI", async () => {
+      const modeSet = vi.fn().mockResolvedValue({ mode: "interactive" });
+      mockClient.createSession.mockResolvedValueOnce(sessionWithMode(modeSet));
+
+      const service = new CopilotService(createMockApp(), createSettings());
+      await service.initialize();
+      await service.createSession({ mode: ChatMode.Agent });
+
+      expect(modeSet).toHaveBeenCalledWith({ mode: "interactive" });
+    });
+
+    it("createSession() ignores rpc.mode.set failures (best-effort)", async () => {
+      const modeSet = vi.fn().mockRejectedValue(new Error("unsupported"));
+      mockClient.createSession.mockResolvedValueOnce(sessionWithMode(modeSet));
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const service = new CopilotService(createMockApp(), createSettings());
+      await service.initialize();
+      await expect(
+        service.createSession({ mode: ChatMode.Autopilot }),
+      ).resolves.not.toThrow();
+      expect(warnSpy).toHaveBeenCalled();
+    });
+
+    it("createSession() works on legacy sessions without rpc.mode", async () => {
+      const legacy = createSessionMock(); // no rpc.mode
+      mockClient.createSession.mockResolvedValueOnce(legacy);
+
+      const service = new CopilotService(createMockApp(), createSettings());
+      await service.initialize();
+      await expect(
+        service.createSession({ mode: ChatMode.Autopilot }),
+      ).resolves.not.toThrow();
+    });
+
+    it("resumeSession() re-applies the current CLI agent mode", async () => {
+      const modeSet = vi.fn().mockResolvedValue({ mode: "autopilot" });
+      const session1 = sessionWithMode(vi.fn().mockResolvedValue({ mode: "autopilot" }));
+      const session2 = sessionWithMode(modeSet);
+      mockClient.createSession.mockResolvedValueOnce(session1);
+      mockClient.resumeSession.mockResolvedValueOnce(session2);
+
+      const service = new CopilotService(createMockApp(), createSettings());
+      await service.initialize();
+      await service.createSession({ mode: ChatMode.Autopilot });
+      modeSet.mockClear();
+      await service.resumeSession("resume-me");
+
+      expect(modeSet).toHaveBeenCalledWith({ mode: "autopilot" });
+    });
+  });
 });

@@ -4,7 +4,7 @@ import { ChatMode } from "../types/constants";
 import { ModeSelector } from "./ModeSelector";
 
 describe("ModeSelector", () => {
-  it("renders a dropdown with Ask and Agent options", () => {
+  it("renders a dropdown with Ask, Agent, and Autopilot options", () => {
     render(
       <ModeSelector currentMode={ChatMode.Ask} onModeChange={vi.fn()} />,
     );
@@ -13,6 +13,7 @@ describe("ModeSelector", () => {
     expect(select).toHaveValue(ChatMode.Ask);
     expect(screen.getByRole("option", { name: "Ask" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Autopilot" })).toBeInTheDocument();
   });
 
   it("calls onModeChange when switching to Agent", async () => {
@@ -39,6 +40,19 @@ describe("ModeSelector", () => {
     await user.selectOptions(screen.getByRole("combobox"), ChatMode.Ask);
 
     expect(onModeChange).toHaveBeenCalledWith(ChatMode.Ask);
+  });
+
+  it("calls onModeChange when switching to Autopilot", async () => {
+    const user = userEvent.setup();
+    const onModeChange = vi.fn();
+
+    render(
+      <ModeSelector currentMode={ChatMode.Agent} onModeChange={onModeChange} />,
+    );
+
+    await user.selectOptions(screen.getByRole("combobox"), ChatMode.Autopilot);
+
+    expect(onModeChange).toHaveBeenCalledWith(ChatMode.Autopilot);
   });
 
   it("exposes an accessible name on the select", () => {
