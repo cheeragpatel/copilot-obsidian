@@ -100,6 +100,85 @@ export class ConfigDiscovery {
   }
 
   /**
+   * Return the vault DataAdapter if it exposes the methods we need. Used as a
+   * fallback for hidden vault folders (.github, .copilot) that Obsidian's
+   * vault index does not surface via getAbstractFileByPath.
+   */
+  private getAdapter(): {
+    list: (path: string) => Promise<{ files: string[]; folders: string[] }>;
+    read: (path: string) => Promise<string>;
+    exists: (path: string) => Promise<boolean>;
+  } | null {
+    const adapter = this.app.vault.adapter as
+      | {
+          list?: (path: string) => Promise<{ files: string[]; folders: string[] }>;
+          read?: (path: string) => Promise<string>;
+          exists?: (path: string) => Promise<boolean>;
+        }
+      | undefined;
+    if (!adapter || !adapter.list || !adapter.read || !adapter.exists) return null;
+    return adapter as {
+      list: (path: string) => Promise<{ files: string[]; folders: string[] }>;
+      read: (path: string) => Promise<string>;
+      exists: (path: string) => Promise<boolean>;
+    };
+  }
+
+  /** True if a vault folder exists, checking the index first and adapter as fallback. */
+  private async vaultFolderExists(path: string): Promise<boolean> {
+    if (isVaultFolder(this.app.vault.getAbstractFileByPath(path))) return true;
+    const adapter = this.getAdapter();
+    if (!adapter) return false;
+    try {
+      return await adapter.exists(path);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Read a vault file, falling back to the adapter when the index doesn't see it. */
+  private async readVaultFile(path: string): Promise<string | null> {
+    const indexed = this.app.vault.getAbstractFileByPath(path);
+    if (isVaultFile(indexed)) {
+      try {
+        return await this.app.vault.read(indexed);
+      } catch (error) {
+        console.warn(`[Copilot] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
+        return null;
+      }
+    }
+    const adapter = this.getAdapter();
+    if (!adapter) return null;
+    try {
+      if (!(await adapter.exists(path))) return null;
+      return await adapter.read(path);
+    } catch (error) {
+      console.warn(`[Copilot] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
+      return null;
+    }
+  }
+
+  /** List markdown file paths inside a vault folder, with adapter fallback. */
+  private async listVaultMarkdown(folderPath: string): Promise<string[]> {
+    const folder = this.app.vault.getAbstractFileByPath(folderPath);
+    if (isVaultFolder(folder)) {
+      return folder.children
+        .filter((child): child is TFile => isVaultFile(child) && child.extension === "md")
+        .map((file) => file.path)
+        .sort((left, right) => left.localeCompare(right));
+    }
+    const adapter = this.getAdapter();
+    if (!adapter) return [];
+    try {
+      if (!(await adapter.exists(folderPath))) return [];
+      const listing = await adapter.list(folderPath);
+      return listing.files.filter((p) => p.endsWith(".md")).sort((a, b) => a.localeCompare(b));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Discover all Copilot config from standard locations in the vault and user home directory.
    * Looks in:
    *   .github/skills/              — repo skills
@@ -140,8 +219,7 @@ export class ConfigDiscovery {
     const candidates = [".github/skills", ".copilot/skills"];
 
     for (const candidate of candidates) {
-      const folder = this.app.vault.getAbstractFileByPath(candidate);
-      if (isVaultFolder(folder)) {
+      if (await this.vaultFolderExists(candidate)) {
         directories.push(candidate);
       }
     }
@@ -155,13 +233,10 @@ export class ConfigDiscovery {
     const vaultCandidates = [".github/copilot/mcp.json", ".copilot/mcp.json"];
 
     for (const candidate of vaultCandidates) {
-      const file = this.app.vault.getAbstractFileByPath(candidate);
-      if (!isVaultFile(file)) {
-        continue;
-      }
+      const content = await this.readVaultFile(candidate);
+      if (content === null) continue;
 
       try {
-        const content = await this.app.vault.read(file);
         this.appendMCPServers(servers, seen, JSON.parse(content), "vault");
       } catch (error) {
         console.warn(`[Copilot] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
@@ -263,28 +338,13 @@ export class ConfigDiscovery {
   private async discoverInstructions(): Promise<string> {
     const parts: string[] = [];
 
-    const repoInstructions = this.app.vault.getAbstractFileByPath(".github/copilot-instructions.md");
-    if (isVaultFile(repoInstructions)) {
-      try {
-        parts.push(await this.app.vault.read(repoInstructions));
-      } catch (error) {
-        console.warn("[Copilot] Failed to read .github/copilot-instructions.md:", (error as Error)?.message || "Unknown error");
-      }
-    }
+    const repo = await this.readVaultFile(".github/copilot-instructions.md");
+    if (repo !== null) parts.push(repo);
 
-    const personalInstructions = this.app.vault.getAbstractFileByPath(".copilot/instructions");
-    if (isVaultFolder(personalInstructions)) {
-      const markdownFiles = personalInstructions.children
-        .filter((child): child is TFile => isVaultFile(child) && child.extension === "md")
-        .sort((left, right) => left.path.localeCompare(right.path));
-
-      for (const file of markdownFiles) {
-        try {
-          parts.push(await this.app.vault.read(file));
-        } catch (error) {
-          console.warn(`[Copilot] Failed to read ${file.path}:`, (error as Error)?.message || "Unknown error");
-        }
-      }
+    const personalPaths = await this.listVaultMarkdown(".copilot/instructions");
+    for (const filePath of personalPaths) {
+      const content = await this.readVaultFile(filePath);
+      if (content !== null) parts.push(content);
     }
 
     return parts.join("\n\n");
@@ -300,26 +360,20 @@ export class ConfigDiscovery {
     const agents: CustomAgentEntry[] = [];
     const seen = new Set<string>();
 
-    // 1. Vault-local agents
+    // 1. Vault-local agents. listVaultMarkdown handles hidden vault folders
+    // (.github, .copilot) by falling back to the DataAdapter when the vault
+    // index doesn't surface them.
     const vaultAgentDirs = [".copilot/agents", ".github/agents"];
     for (const dir of vaultAgentDirs) {
-      const folder = this.app.vault.getAbstractFileByPath(dir);
-      if (!isVaultFolder(folder)) continue;
-
-      const mdFiles = folder.children
-        .filter((child): child is TFile => isVaultFile(child) && child.extension === "md")
-        .sort((left, right) => left.path.localeCompare(right.path));
-
-      for (const file of mdFiles) {
-        try {
-          const content = await this.app.vault.read(file);
-          const agent = this.parseAgentFile(content, file.basename);
-          if (agent && !seen.has(agent.name)) {
-            seen.add(agent.name);
-            agents.push(agent);
-          }
-        } catch (error) {
-          console.warn(`[Copilot] Failed to read agent ${file.path}:`, (error as Error)?.message || "Unknown error");
+      const filePaths = await this.listVaultMarkdown(dir);
+      for (const filePath of filePaths) {
+        const content = await this.readVaultFile(filePath);
+        if (content === null) continue;
+        const basename = (filePath.split("/").pop() || filePath).replace(/\.md$/, "");
+        const agent = this.parseAgentFile(content, basename);
+        if (agent && !seen.has(agent.name)) {
+          seen.add(agent.name);
+          agents.push(agent);
         }
       }
     }

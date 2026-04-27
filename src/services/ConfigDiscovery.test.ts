@@ -374,6 +374,42 @@ describe("ConfigDiscovery", () => {
     expect(mockApp.vault.getAbstractFileByPath).toHaveBeenCalledWith(".copilot/instructions");
   });
 
+  it("discovers vault agents in hidden .github/agents folder via adapter fallback", async () => {
+    const agentContent = [
+      "---",
+      'name: "vault-reviewer"',
+      'description: "Reviews PRs"',
+      "---",
+      "You are a PR reviewer.",
+    ].join("\n");
+
+    (mockApp.vault as any).adapter = {
+      exists: vi.fn(async (p: string) =>
+        p === ".github/agents" || p === ".github/agents/vault-reviewer.md",
+      ),
+      list: vi.fn(async (p: string) => {
+        if (p === ".github/agents") {
+          return { files: [".github/agents/vault-reviewer.md"], folders: [] };
+        }
+        return { files: [], folders: [] };
+      }),
+      read: vi.fn(async (p: string) => {
+        if (p === ".github/agents/vault-reviewer.md") return agentContent;
+        throw new Error("Not found");
+      }),
+    };
+
+    const discovery = new ConfigDiscovery(mockApp as any);
+    const config = await discovery.discover();
+
+    expect(config.agents).toEqual([
+      expect.objectContaining({
+        name: "vault-reviewer",
+        description: "Reviews PRs",
+      }),
+    ]);
+  });
+
   it("discovers global agents using os.homedir() for cross-platform home resolution", async () => {
     const homeRoot = os.homedir() || "/tmp/tester";
     const agentContent = [
