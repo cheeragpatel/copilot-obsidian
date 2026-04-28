@@ -327,7 +327,14 @@ export class CopilotService {
     const systemMsg = hasOwn(options, "systemMessage")
       ? (options.systemMessage ?? "")
       : this.settings.systemMessage;
-    const combinedSystemMsg = [discoveredConfig.instructions, systemMsg]
+
+    // When vault tools are available, instruct the model to prefer them over shell commands
+    const vaultToolPriority =
+      mode === ChatMode.Agent && options.tools
+        ? "IMPORTANT: Always prefer vault tools (read_note, search_vault, list_notes, create_note, edit_note, get_active_note, get_note_metadata) over shell/command execution when the task can be accomplished within the Obsidian vault. Only fall back to shell scripts if the vault tools cannot fulfill the request."
+        : "";
+
+    const combinedSystemMsg = [vaultToolPriority, discoveredConfig.instructions, systemMsg]
       .filter(Boolean)
       .join("\n\n");
 

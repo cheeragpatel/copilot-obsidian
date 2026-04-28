@@ -18,6 +18,8 @@ describe("src/types/settings", () => {
     logLevel: true,
     autoIncludeCurrentNote: true,
     exportFolder: true,
+    defaultAutopilotPermissions: true,
+    defaultVaultToolPermissions: true,
   };
 
   const expectedKeys = Object.keys(pluginSettingsKeyMap).sort();
@@ -37,6 +39,8 @@ describe("src/types/settings", () => {
       excludedTools: [],
       systemMessage: "",
       logLevel: "info",
+      defaultAutopilotPermissions: false,
+      defaultVaultToolPermissions: true,
     });
 
     expect(Object.keys(DEFAULT_SETTINGS).sort()).toEqual(expectedKeys);
