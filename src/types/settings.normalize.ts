@@ -1,7 +1,7 @@
 import { ChatMode } from "./constants";
 import type { CustomAgentEntry, MCPServerEntry, PluginSettings } from "./settings";
 
-const ALLOWED_MODES = new Set<string>([ChatMode.Ask, ChatMode.Agent, ChatMode.Autopilot]);
+const ALLOWED_MODES = new Set<string>([ChatMode.Ask, ChatMode.Agent]);
 const ALLOWED_LOG_LEVELS = new Set<PluginSettings["logLevel"]>([
   "debug",
   "info",
@@ -174,5 +174,7 @@ export function normalizeSettings(raw: unknown, defaults: PluginSettings): Plugi
       defaults.autoIncludeCurrentNote,
     ),
     exportFolder,
+    defaultVaultToolPermissions: asBool(source.defaultVaultToolPermissions, defaults.defaultVaultToolPermissions),
+    defaultAutopilotPermissions: asBool(source.defaultAutopilotPermissions, defaults.defaultAutopilotPermissions),
   };
 }

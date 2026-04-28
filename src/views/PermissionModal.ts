@@ -1,4 +1,5 @@
 import { App, Modal } from "obsidian";
+import type { PluginSettings } from "../types/settings";
 
 export interface PermissionPromptOptions {
   kind: string;
@@ -237,14 +238,36 @@ export class PermissionModal extends Modal {
  * to the SDK-compatible permission result.
  *
  * Checks cached approvals first (session + permanent) before prompting.
+ * Auto-approves vault tools if defaultVaultToolPermissions is enabled.
  */
 export function promptPermission(
   app: App,
   request: { kind: string; [key: string]: unknown },
+  settings?: PluginSettings,
 ): Promise<{ kind: "approved" } | { kind: "denied-by-rules"; rules: unknown[] }> {
   // Autopilot bypass — auto-approve before any cache lookup or modal.
   if (autopilotEnabled) {
     return Promise.resolve({ kind: "approved" });
+  }
+
+  // Auto-approve vault tools if default permissions enabled
+  if (
+    settings?.defaultVaultToolPermissions &&
+    request.kind === "custom-tool"
+  ) {
+    const toolName = request.tool || request.toolName || request.name;
+    const vaultTools = [
+      "read_note",
+      "search_vault",
+      "list_notes",
+      "create_note",
+      "edit_note",
+      "get_active_note",
+      "get_note_metadata",
+    ];
+    if (typeof toolName === "string" && vaultTools.includes(toolName)) {
+      return Promise.resolve({ kind: "approved" });
+    }
   }
 
   const key = permissionKey(request);

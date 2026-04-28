@@ -20,7 +20,6 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
       >
         <option value={ChatMode.Ask}>Ask</option>
         <option value={ChatMode.Agent}>Agent</option>
-        <option value={ChatMode.Autopilot}>Autopilot</option>
       </select>
     </div>
   );

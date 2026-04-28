@@ -6,6 +6,7 @@ import type { CustomAgentEntry } from "../types/settings";
 interface ChatState {
   messages: ChatMessage[];
   currentMode: ChatMode;
+  autopilotPermissions: boolean;
   currentModel: string;
   availableModels: { id: string; name: string }[];
   isLoading: boolean;
@@ -38,6 +39,7 @@ interface ChatActions {
   clearMessages: () => void;
   setMessages: (messages: ChatMessage[]) => void;
   setMode: (mode: ChatMode) => void;
+  setAutopilotPermissions: (enabled: boolean) => void;
   setModel: (model: string) => void;
   setAvailableModels: (models: { id: string; name: string }[]) => void;
   setLoading: (loading: boolean) => void;
@@ -116,6 +118,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   // State
   messages: [],
   currentMode: ChatMode.Ask,
+  autopilotPermissions: false,
   currentModel: DEFAULT_MODEL,
   availableModels: [],
   isLoading: false,
@@ -249,6 +252,8 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   setMessages: (messages) => set({ messages }),
 
   setMode: (mode) => set({ currentMode: mode }),
+
+  setAutopilotPermissions: (enabled) => set({ autopilotPermissions: enabled }),
 
   setModel: (model) => set({ currentModel: model }),
 

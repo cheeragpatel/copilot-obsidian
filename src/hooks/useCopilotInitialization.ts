@@ -14,7 +14,7 @@ export type InitState = "loading" | "ready" | "error";
 export interface CopilotInitialization {
   initState: InitState;
   initPromise: React.MutableRefObject<Promise<void> | null>;
-  recreateSession: (overrides?: { model?: string; mode?: ChatMode }) => Promise<void>;
+  recreateSession: (overrides?: { model?: string; mode?: ChatMode; autopilotPermissions?: boolean }) => Promise<void>;
   discoverTools: () => Promise<void>;
 }
 
@@ -54,15 +54,16 @@ export function useCopilotInitialization(
   }, [ctx, replaceMCPTools]);
 
   const recreateSession = useCallback(
-    async (overrides: { model?: string; mode?: ChatMode } = {}) => {
+    async (overrides: { model?: string; mode?: ChatMode; autopilotPermissions?: boolean } = {}) => {
       if (!ctx) return;
       if (initPromise.current) await initPromise.current;
 
       const state = useChatStore.getState();
       const model = overrides.model ?? state.currentModel;
       const mode = overrides.mode ?? state.currentMode;
+      const autopilotPermissions = overrides.autopilotPermissions ?? state.autopilotPermissions;
       const tools =
-        mode === ChatMode.Agent || mode === ChatMode.Autopilot
+        mode === ChatMode.Agent
           ? createVaultTools(ctx.app)
           : undefined;
 
@@ -70,6 +71,7 @@ export function useCopilotInitialization(
         model,
         mode,
         tools,
+        autopilotPermissions,
         mcpServers: state.getEnabledMCPConfig(),
       });
       setSessionId(ctx.copilotService.getSessionId());
@@ -124,8 +126,7 @@ export function useCopilotInitialization(
         }
 
         const tools =
-          ctx.settings.defaultMode === ChatMode.Agent ||
-          ctx.settings.defaultMode === ChatMode.Autopilot
+          ctx.settings.defaultMode === ChatMode.Agent
             ? createVaultTools(ctx.app)
             : undefined;
 

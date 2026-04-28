@@ -19,6 +19,7 @@ type EventCallback = (event: SessionEvent) => void;
 interface SessionOptions {
   model?: string;
   mode?: ChatMode;
+  autopilotPermissions?: boolean;
   tools?: ReturnType<typeof defineTool>[];
   mcpServers?: Record<string, any>;
   customAgents?: any[];
@@ -39,6 +40,7 @@ export class CopilotService {
   private eventListeners: Set<EventCallback> = new Set();
   private discoveredTools: Map<string, DiscoveredTool> = new Map();
   private currentMode: ChatMode;
+  private currentAutopilotPermissions: boolean = false;
   private unsubscribeSession?: () => void;
   private unsubscribeClientHealth?: () => void;
   // Serializes session creation/replacement so concurrent createSession()
@@ -214,6 +216,7 @@ export class CopilotService {
 
     const model = options.model ?? this.settings.defaultModel ?? DEFAULT_MODEL;
     const mode = options.mode ?? this.currentMode;
+    const autopilotPermissions = options.autopilotPermissions ?? this.currentAutopilotPermissions;
 
     let discoveredConfig: {
       skills: string[];
@@ -276,10 +279,11 @@ export class CopilotService {
     const sessionConfig: any = {
       model,
       streaming: this.settings.streaming,
-      onPermissionRequest: (request: any) => promptPermission(this.app, request),
+      onPermissionRequest: (request: any) =>
+        promptPermission(this.app, request, this.settings),
     };
 
-    if ((mode === ChatMode.Agent || mode === ChatMode.Autopilot) && options.tools) {
+    if (mode === ChatMode.Agent && options.tools) {
       sessionConfig.tools = options.tools;
     }
 
@@ -335,11 +339,12 @@ export class CopilotService {
 
     // Mode reflects the active session, so update only after it's wired.
     this.currentMode = mode;
+    this.currentAutopilotPermissions = autopilotPermissions;
 
     // Push the CLI-side agent mode (interactive vs. autopilot). Autopilot
     // tells the CLI to auto-approve tool execution rather than firing
     // onPermissionRequest callbacks.
-    await this.applyCliAgentMode(mode);
+    await this.applyCliAgentMode(mode, autopilotPermissions);
   }
 
   async sendMessage(prompt: string, attachments?: FileAttachment[]): Promise<void> {
@@ -382,8 +387,8 @@ export class CopilotService {
     };
   }
 
-  async switchMode(mode: ChatMode, tools?: ReturnType<typeof defineTool>[]): Promise<void> {
-    await this.createSession({ mode, tools });
+  async switchMode(mode: ChatMode, tools?: ReturnType<typeof defineTool>[], autopilotPermissions?: boolean): Promise<void> {
+    await this.createSession({ mode, tools, autopilotPermissions });
   }
 
   getMode(): ChatMode {
@@ -418,13 +423,14 @@ export class CopilotService {
       }
       return this.client.resumeSession(sessionId, {
         tools: tools || [],
-        onPermissionRequest: (request: any) => promptPermission(this.app, request),
+        onPermissionRequest: (request: any) =>
+          promptPermission(this.app, request, this.settings),
       });
     });
 
     // Re-apply the desired CLI agent mode to the resumed session — the CLI
     // does not necessarily restore the previous mode for resumed sessions.
-    await this.applyCliAgentMode(this.currentMode);
+    await this.applyCliAgentMode(this.currentMode, this.currentAutopilotPermissions);
   }
 
   /**
@@ -433,11 +439,11 @@ export class CopilotService {
    * in which case we silently fall back to interactive (with permission
    * prompts) rather than failing session creation.
    */
-  private async applyCliAgentMode(mode: ChatMode): Promise<void> {
-    const cliMode = toCliAgentMode(mode);
+  private async applyCliAgentMode(mode: ChatMode, autopilotPermissions: boolean): Promise<void> {
+    const cliMode = toCliAgentMode(mode, autopilotPermissions);
     // Mirror the mode into the host-side permission handler so any prompts
     // the CLI still emits (older versions, MCP-only requests) get auto-approved
-    // when the user has chosen autopilot.
+    // when autopilot permissions are enabled.
     setAutopilot(cliMode === "autopilot");
 
     const setter = this.session?.rpc?.mode?.set;

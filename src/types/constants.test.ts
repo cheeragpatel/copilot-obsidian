@@ -12,18 +12,16 @@ describe("src/types/constants", () => {
     const chatModeValues = Object.values(ChatMode);
 
     expect(chatModeValues).toEqual(
-      expect.arrayContaining([ChatMode.Ask, ChatMode.Agent, ChatMode.Autopilot]),
+      expect.arrayContaining([ChatMode.Ask, ChatMode.Agent]),
     );
     expect(ChatMode.Ask).toBe("ask");
     expect(ChatMode.Agent).toBe("agent");
-    expect(ChatMode.Autopilot).toBe("autopilot");
-    expect(new Set(chatModeValues).size).toBe(3);
+    expect(new Set(chatModeValues).size).toBe(2);
   });
 
   it("maps UI chat modes to CLI agent modes", () => {
     expect(toCliAgentMode(ChatMode.Ask)).toBe("interactive");
     expect(toCliAgentMode(ChatMode.Agent)).toBe("interactive");
-    expect(toCliAgentMode(ChatMode.Autopilot)).toBe("autopilot");
   });
 
   it("exports a default model as a defined string", () => {

@@ -861,13 +861,13 @@ describe("CopilotService", () => {
       const tool = createTool("search", "Search notes");
 
       await service.initialize();
-      await service.createSession({ mode: ChatMode.Autopilot, tools: [tool] });
+      await service.createSession({ mode: ChatMode.Agent, tools: [tool] });
 
       expect(mockClient.createSession).toHaveBeenCalledWith(
         expect.objectContaining({ tools: [tool] }),
       );
-      expect(modeSet).toHaveBeenCalledWith({ mode: "autopilot" });
-      expect(service.getMode()).toBe(ChatMode.Autopilot);
+      expect(modeSet).toHaveBeenCalledWith({ mode: "interactive" });
+      expect(service.getMode()).toBe(ChatMode.Agent);
     });
 
     it("createSession() in Agent mode pushes 'interactive' to the CLI", async () => {
@@ -889,7 +889,7 @@ describe("CopilotService", () => {
       const service = new CopilotService(createMockApp(), createSettings());
       await service.initialize();
       await expect(
-        service.createSession({ mode: ChatMode.Autopilot }),
+        service.createSession({ mode: ChatMode.Agent }),
       ).resolves.not.toThrow();
       expect(warnSpy).toHaveBeenCalled();
     });
@@ -901,24 +901,24 @@ describe("CopilotService", () => {
       const service = new CopilotService(createMockApp(), createSettings());
       await service.initialize();
       await expect(
-        service.createSession({ mode: ChatMode.Autopilot }),
+        service.createSession({ mode: ChatMode.Agent }),
       ).resolves.not.toThrow();
     });
 
     it("resumeSession() re-applies the current CLI agent mode", async () => {
-      const modeSet = vi.fn().mockResolvedValue({ mode: "autopilot" });
-      const session1 = sessionWithMode(vi.fn().mockResolvedValue({ mode: "autopilot" }));
+      const modeSet = vi.fn().mockResolvedValue({ mode: "interactive" });
+      const session1 = sessionWithMode(vi.fn().mockResolvedValue({ mode: "interactive" }));
       const session2 = sessionWithMode(modeSet);
       mockClient.createSession.mockResolvedValueOnce(session1);
       mockClient.resumeSession.mockResolvedValueOnce(session2);
 
       const service = new CopilotService(createMockApp(), createSettings());
       await service.initialize();
-      await service.createSession({ mode: ChatMode.Autopilot });
+      await service.createSession({ mode: ChatMode.Agent });
       modeSet.mockClear();
       await service.resumeSession("resume-me");
 
-      expect(modeSet).toHaveBeenCalledWith({ mode: "autopilot" });
+      expect(modeSet).toHaveBeenCalledWith({ mode: "interactive" });
     });
   });
 });

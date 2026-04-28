@@ -40,6 +40,7 @@ export const CopilotChatPanel: React.FC = () => {
   const setError = useChatStore((s) => s.setError);
   const setMode = useChatStore((s) => s.setMode);
   const setModel = useChatStore((s) => s.setModel);
+  const setAutopilotPermissions = useChatStore((s) => s.setAutopilotPermissions);
   const addCustomAgent = useChatStore((s) => s.addCustomAgent);
 
   const { initState, initPromise, recreateSession, discoverTools } =
@@ -203,6 +204,19 @@ export const CopilotChatPanel: React.FC = () => {
     [ctx, addMessage, recreateSession, setError, setMode],
   );
 
+  const handleAutopilotChange = useCallback(
+    async (enabled: boolean) => {
+      if (!ctx) return;
+      try {
+        await recreateSession({ autopilotPermissions: enabled });
+        setAutopilotPermissions(enabled);
+      } catch (err: any) {
+        setError(friendlyError(err.message));
+      }
+    },
+    [ctx, recreateSession, setError, setAutopilotPermissions],
+  );
+
   const handleMCPChange = useCallback(async () => {
     if (!ctx) return;
     try {
@@ -305,6 +319,7 @@ export const CopilotChatPanel: React.FC = () => {
         onMCPChange={handleMCPChange}
         onMCPRefresh={discoverTools}
         onAddAgent={handleAddAgent}
+        onAutopilot={handleAutopilotChange}
         isLoading={isLoading}
         canRetry={canRetry}
       />

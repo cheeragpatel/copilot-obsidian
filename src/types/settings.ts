@@ -27,6 +27,7 @@ export interface PluginSettings {
   streaming: boolean;
   openOnStartup: boolean;
   defaultMode: ChatMode;
+  defaultAutopilotPermissions: boolean;
   mcpServers: MCPServerEntry[];
   customAgents: CustomAgentEntry[];
   skillDirectories: string[];
@@ -37,6 +38,7 @@ export interface PluginSettings {
   logLevel: "debug" | "info" | "warn" | "error";
   autoIncludeCurrentNote: boolean;
   exportFolder: string;
+  defaultVaultToolPermissions: boolean;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   streaming: true,
   openOnStartup: false,
   defaultMode: ChatMode.Ask,
+  defaultAutopilotPermissions: false,
   mcpServers: [],
   customAgents: [],
   skillDirectories: [".github/skills", ".copilot/skills"],
@@ -55,4 +58,5 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   logLevel: "info",
   autoIncludeCurrentNote: false,
   exportFolder: "Copilot Chats",
+  defaultVaultToolPermissions: true,
 };

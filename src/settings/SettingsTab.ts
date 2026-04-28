@@ -76,7 +76,6 @@ export class CopilotSettingsTab extends PluginSettingTab {
       .addDropdown((dropdown) => {
         dropdown.addOption(ChatMode.Ask, "Ask (Q&A only)");
         dropdown.addOption(ChatMode.Agent, "Agent (with vault tools)");
-        dropdown.addOption(ChatMode.Autopilot, "Autopilot (auto-approve tools)");
         dropdown.setValue(this.settings.defaultMode);
         dropdown.onChange(async (value) => {
           this.settings.defaultMode = value as ChatMode;

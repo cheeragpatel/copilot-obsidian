@@ -21,6 +21,7 @@ interface ChatInputProps {
   onAbort: () => void;
   onRetry?: () => void;
   onModeSwitch: (mode: ChatMode) => void;
+  onAutopilot?: (enabled: boolean) => void;
   onModelChange?: (model: string) => void;
   onMCPChange?: () => void;
   onMCPRefresh?: () => void;
@@ -36,6 +37,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onAbort,
   onRetry,
   onModeSwitch,
+  onAutopilot,
   onModelChange,
   onMCPChange,
   onMCPRefresh,
@@ -52,6 +54,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   // Per-field selectors keep the input from re-rendering on unrelated store
   // updates (messages, MCP tools, etc).
   const currentMode = useChatStore((s) => s.currentMode);
+  const autopilotPermissions = useChatStore((s) => s.autopilotPermissions);
   const discoveredAgents = useChatStore((s) => s.discoveredAgents);
   const customAgents = ctx?.settings?.customAgents ?? [];
 
@@ -300,8 +303,10 @@ export const ChatInput: React.FC<ChatInputProps> = ({
       </div>
       <ChatControlsBar
         currentMode={currentMode}
+        autopilotPermissions={autopilotPermissions}
         agents={customAgents}
         onMode={onModeSwitch}
+        onAutopilot={onAutopilot}
         onModel={onModelChange}
         onMCPChange={onMCPChange}
         onMCPRefresh={onMCPRefresh}
