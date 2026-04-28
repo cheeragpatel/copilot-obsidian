@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import type { ToolCallInfo } from "../types/chat";
 import { ToolExecutionIndicator } from "./ToolExecutionIndicator";
 
@@ -49,5 +49,55 @@ describe("ToolExecutionIndicator", () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveAttribute("aria-label", "searchVault: running");
     expect(items[1]).toHaveAttribute("aria-label", "openNote: complete");
+  });
+
+  it("shows chevron and has-output class when result is present", () => {
+    const { container } = renderIndicator([
+      { id: "t9", name: "searchVault", status: "complete", result: "Found 3 notes" },
+    ]);
+
+    expect(container.querySelector(".copilot-tool-call.has-output")).toBeInTheDocument();
+    expect(container.querySelector(".copilot-tool-call-chevron")).toBeInTheDocument();
+  });
+
+  it("does not show chevron when no result", () => {
+    const { container } = renderIndicator([
+      { id: "t10", name: "searchVault", status: "complete" },
+    ]);
+
+    expect(container.querySelector(".copilot-tool-call.has-output")).not.toBeInTheDocument();
+    expect(container.querySelector(".copilot-tool-call-chevron")).not.toBeInTheDocument();
+  });
+
+  it("expands output on click and collapses on second click", () => {
+    const { container } = renderIndicator([
+      { id: "t11", name: "readFile", status: "complete", result: "file content here" },
+    ]);
+
+    const header = container.querySelector(".copilot-tool-call-header")!;
+
+    // Initially collapsed
+    expect(container.querySelector(".copilot-tool-call-output")).not.toBeInTheDocument();
+
+    // Click to expand
+    fireEvent.click(header);
+    expect(container.querySelector(".copilot-tool-call-output")).toBeInTheDocument();
+    expect(screen.getByText("file content here")).toBeInTheDocument();
+    expect(container.querySelector(".copilot-tool-call-chevron.expanded")).toBeInTheDocument();
+
+    // Click to collapse
+    fireEvent.click(header);
+    expect(container.querySelector(".copilot-tool-call-output")).not.toBeInTheDocument();
+  });
+
+  it("does not expand when clicking a tool call without output", () => {
+    const { container } = renderIndicator([
+      { id: "t12", name: "searchVault", status: "running" },
+    ]);
+
+    const header = container.querySelector(".copilot-tool-call-header")!;
+    fireEvent.click(header);
+
+    expect(container.querySelector(".copilot-tool-call-output")).not.toBeInTheDocument();
   });
 });
