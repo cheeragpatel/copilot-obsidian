@@ -8,13 +8,7 @@ import {
   __permissionKeyForTests as permissionKey,
 } from "./PermissionModal";
 
-// Mock obsidian Modal
-vi.mock("obsidian", async () => {
-  const actual = await vi.importActual("obsidian");
-  return {
-    ...actual,
-  };
-});
+// obsidian is already resolved to src/__mocks__/obsidian.ts via vitest.config alias
 
 describe("PermissionModal", () => {
   let mockApp: any;
@@ -36,37 +30,44 @@ describe("PermissionModal", () => {
   it("promptPermission returns a promise", () => {
     const result = promptPermission(mockApp, { kind: "shell" });
     expect(result).toBeInstanceOf(Promise);
+    result.catch(() => {}); // suppress unhandled rejection from floating promise
   });
 
   it("formats shell permission kind", () => {
     // The modal is created with open() called — verifying no throw
     const result = promptPermission(mockApp, { kind: "shell", command: "ls -la" });
     expect(result).toBeInstanceOf(Promise);
+    result.catch(() => {});
   });
 
   it("formats write permission kind", () => {
     const result = promptPermission(mockApp, { kind: "write", path: "/tmp/test.txt" });
     expect(result).toBeInstanceOf(Promise);
+    result.catch(() => {});
   });
 
   it("formats mcp permission kind", () => {
     const result = promptPermission(mockApp, { kind: "mcp", server: "github" });
     expect(result).toBeInstanceOf(Promise);
+    result.catch(() => {});
   });
 
   it("formats url permission kind", () => {
     const result = promptPermission(mockApp, { kind: "url", url: "https://example.com" });
     expect(result).toBeInstanceOf(Promise);
+    result.catch(() => {});
   });
 
   it("formats custom-tool permission kind", () => {
     const result = promptPermission(mockApp, { kind: "custom-tool", tool: "my-tool" });
     expect(result).toBeInstanceOf(Promise);
+    result.catch(() => {});
   });
 
   it("handles unknown permission kind", () => {
     const result = promptPermission(mockApp, { kind: "unknown" });
     expect(result).toBeInstanceOf(Promise);
+    result.catch(() => {});
   });
 
   describe("autopilot", () => {

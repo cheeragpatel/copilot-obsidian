@@ -2,6 +2,7 @@ import * as React from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { ChatMessage } from "../types/chat";
 import { MessageBubble } from "./MessageBubble";
+import { PermissionPromptInline } from "./PermissionPromptInline";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -54,6 +55,7 @@ const MessageListImpl: React.FC<MessageListProps> = ({ messages }) => {
       {messages.map((msg) => (
         <MessageBubble key={msg.id} message={msg} />
       ))}
+      <PermissionPromptInline />
       <div ref={bottomRef} />
       {showJumpBtn && (
         <button className="copilot-jump-bottom-btn" onClick={jumpToBottom} title="Jump to bottom">

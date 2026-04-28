@@ -60,6 +60,9 @@ function permissionKey(request: { kind: string; [key: string]: unknown }): strin
 /** Exported for tests — do not use directly in production code. */
 export const __permissionKeyForTests = permissionKey;
 
+/** Re-export permissionKey for store caching logic. */
+export { permissionKey };
+
 // In-memory caches — session cache resets when plugin reloads, permanent persists to localStorage
 const sessionAllowed = new Set<string>();
 let autopilotEnabled = false;
@@ -244,6 +247,7 @@ export function promptPermission(
   app: App,
   request: { kind: string; [key: string]: unknown },
   settings?: PluginSettings,
+  inlineHandler?: (request: { kind: string; [key: string]: unknown }, resolve: (result: { kind: "approved" } | { kind: "denied-by-rules"; rules: unknown[] }) => void) => void,
 ): Promise<{ kind: "approved" } | { kind: "denied-by-rules"; rules: unknown[] }> {
   // Autopilot bypass — auto-approve before any cache lookup or modal.
   if (autopilotEnabled) {
@@ -282,6 +286,13 @@ export function promptPermission(
     return Promise.resolve({ kind: "approved" });
   }
 
+  // Use inline handler if provided (renders in chat UI)
+  if (inlineHandler) {
+    return new Promise((resolve) => {
+      inlineHandler(request, resolve);
+    });
+  }
+
   return new Promise((resolve) => {
     const modal = new PermissionModal(
       app,
@@ -307,6 +318,17 @@ export function promptPermission(
 /** Clear session-level permission cache (e.g. on plugin unload). */
 export function clearSessionPermissions(): void {
   sessionAllowed.clear();
+}
+
+/** Add a key to the session-level permission cache. */
+export function addSessionPermission(key: string): void {
+  sessionAllowed.add(key);
+}
+
+/** Add a key to both session and permanent permission caches. */
+export function addPermanentPermission(key: string): void {
+  sessionAllowed.add(key);
+  savePermanentPermission(key);
 }
 
 /** Clear all permanent permissions. */

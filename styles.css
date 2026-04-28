@@ -1477,3 +1477,88 @@
 .copilot-context-chip-dismiss:hover {
   color: var(--text-normal);
 }
+
+/* ── Inline Permission Prompt ── */
+.copilot-permission-prompt {
+  margin: 8px 12px;
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.copilot-permission-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.copilot-permission-icon {
+  font-size: 1.1em;
+}
+
+.copilot-permission-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+  font-size: 0.9em;
+}
+
+.copilot-permission-details strong {
+  color: var(--text-normal);
+}
+
+.copilot-permission-details span {
+  color: var(--text-muted);
+}
+
+.copilot-permission-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.copilot-permission-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 0.8em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.copilot-permission-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.copilot-permission-btn--allow {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+
+.copilot-permission-btn--session {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+
+.copilot-permission-btn--always {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.copilot-permission-btn--always:hover {
+  opacity: 0.9;
+}
+
+.copilot-permission-btn--deny {
+  border-color: var(--text-error);
+  color: var(--text-error);
+}

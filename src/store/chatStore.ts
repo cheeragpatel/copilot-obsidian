@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { ChatMode, DEFAULT_MODEL } from "../types/constants";
-import type { ChatMessage, ToolCallInfo, ConversationMeta, MCPServerState } from "../types/chat";
+import type { ChatMessage, ToolCallInfo, ConversationMeta, MCPServerState, PendingPermission } from "../types/chat";
 import type { CustomAgentEntry } from "../types/settings";
+import { addSessionPermission, addPermanentPermission, permissionKey } from "../views/PermissionModal";
 
 interface ChatState {
   messages: ChatMessage[];
@@ -19,6 +20,7 @@ interface ChatState {
   mcpServers: MCPServerState[];
   toolSelectionInitialized: Record<string, boolean>;
   _loadingTimeoutId: number | undefined;
+  pendingPermission: PendingPermission | null;
 }
 
 type DiscoveredTool = { name: string; namespacedName?: string; description?: string };
@@ -60,6 +62,8 @@ interface ChatActions {
   getEnabledMCPConfig: () => Record<string, any>;
   addCustomAgent: (agent: CustomAgentEntry) => void;
   newConversation: () => void;
+  setPendingPermission: (perm: PendingPermission | null) => void;
+  resolvePermission: (approved: boolean, scope: "once" | "session" | "permanent") => void;
 }
 
 function generateId(): string {
@@ -131,6 +135,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   mcpServers: [],
   toolSelectionInitialized: {},
   _loadingTimeoutId: undefined,
+  pendingPermission: null,
 
   // Actions
   addMessage: (message) =>
@@ -486,6 +491,24 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       error: null,
       selectedAgent: null,
     }),
+
+  setPendingPermission: (perm) => set({ pendingPermission: perm }),
+
+  resolvePermission: (approved, scope) => {
+    const perm = get().pendingPermission;
+    if (!perm) return;
+
+    if (approved) {
+      const key = permissionKey(perm.details as { kind: string; [key: string]: unknown });
+      if (scope === "session") addSessionPermission(key);
+      if (scope === "permanent") addPermanentPermission(key);
+      perm.resolve({ kind: "approved" });
+    } else {
+      perm.resolve({ kind: "denied-by-rules", rules: [{ description: "User denied" }] });
+    }
+
+    set({ pendingPermission: null });
+  },
 }));
 
 export { generateId };

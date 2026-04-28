@@ -7,6 +7,7 @@ import type { PluginSettings, MCPServerEntry, CustomAgentEntry } from "../types/
 import type { FileAttachment } from "../types/chat";
 import { ConfigDiscovery } from "./ConfigDiscovery";
 import { promptPermission, setAutopilot } from "../views/PermissionModal";
+import { useChatStore, generateId } from "../store/chatStore";
 import {
   discoverTools as sdkDiscoverTools,
   normalizeToolInfo,
@@ -280,7 +281,14 @@ export class CopilotService {
       model,
       streaming: this.settings.streaming,
       onPermissionRequest: (request: any) =>
-        promptPermission(this.app, request, this.settings),
+        promptPermission(this.app, request, this.settings, (req, resolve) => {
+          useChatStore.getState().setPendingPermission({
+            id: generateId(),
+            kind: req.kind || "tool_call",
+            details: req,
+            resolve,
+          });
+        }),
     };
 
     if (mode === ChatMode.Agent && options.tools) {
@@ -424,7 +432,14 @@ export class CopilotService {
       return this.client.resumeSession(sessionId, {
         tools: tools || [],
         onPermissionRequest: (request: any) =>
-          promptPermission(this.app, request, this.settings),
+          promptPermission(this.app, request, this.settings, (req, resolve) => {
+            useChatStore.getState().setPendingPermission({
+              id: generateId(),
+              kind: req.kind || "tool_call",
+              details: req,
+              resolve,
+            });
+          }),
       });
     });
 

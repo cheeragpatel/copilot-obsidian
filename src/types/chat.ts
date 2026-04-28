@@ -44,3 +44,11 @@ export interface MCPServerState {
   tools: MCPToolInfo[];
   source: "settings" | "vault" | "home";
 }
+
+/** Represents a pending permission request shown inline in the chat. */
+export interface PendingPermission {
+  id: string;
+  kind: string;
+  details: Record<string, unknown>;
+  resolve: (result: { kind: "approved" } | { kind: "denied-by-rules"; rules: unknown[] }) => void;
+}
