@@ -2,7 +2,7 @@ import * as React from "react";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Notice, TFile } from "obsidian";
 import { PluginContext } from "../views/CopilotChatView";
-import { useChatStore, generateId } from "../store/chatStore";
+import { useChatStore, generateId, isTaskRunning } from "../store/chatStore";
 import {
   ChatMode,
   COPILOT_EVENT_EXPORT_CONVERSATION,
@@ -34,6 +34,7 @@ export const CopilotChatPanel: React.FC = () => {
   // store changes (mcp tool toggles, agent discovery, etc).
   const messages = useChatStore((s) => s.messages);
   const isLoading = useChatStore((s) => s.isLoading);
+  const taskRunning = useChatStore(isTaskRunning);
   const error = useChatStore((s) => s.error);
   const conversations = useChatStore((s) => s.conversations);
   const addMessage = useChatStore((s) => s.addMessage);
@@ -321,6 +322,7 @@ export const CopilotChatPanel: React.FC = () => {
         onAddAgent={handleAddAgent}
         onAutopilot={handleAutopilotChange}
         isLoading={isLoading}
+        isTaskRunning={taskRunning}
         canRetry={canRetry}
       />
     </div>

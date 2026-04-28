@@ -26,6 +26,21 @@ interface ChatState {
 type DiscoveredTool = { name: string; namespacedName?: string; description?: string };
 type ToolPatch = Partial<Pick<ToolCallInfo, "status" | "result">>;
 
+/** Derived selector: true while any work is in progress (loading, streaming, tool running, or permission pending). */
+export function isTaskRunning(state: ChatState): boolean {
+  if (state.isLoading) return true;
+  if (state.pendingPermission) return true;
+  const msgs = state.messages;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.isStreaming) return true;
+    if (m.toolCalls?.some((tc) => tc.status === "running")) return true;
+    // Only check recent assistant messages
+    if (m.role === "assistant") break;
+  }
+  return false;
+}
+
 interface ChatActions {
   addMessage: (message: ChatMessage) => void;
   removeLastAssistantMessage: () => void;

@@ -45,13 +45,15 @@ export function useSendMessage({ ctx, initPromise }: UseSendMessageOptions): Sen
   const isLoading = useChatStore((s) => s.isLoading);
   const messagesLength = useChatStore((s) => s.messages.length);
 
+  // Safety-net timeout: 5 minutes. The real "done" signal comes from
+  // session.idle / session.error events in useCopilotEvents.
   const startLoadingTimer = useCallback(() => {
     return setTimeout(() => {
       if (useChatStore.getState().isLoading) {
         setLoading(false);
-        setError("Request timed out after 30 seconds. Please try again.");
+        setError("Request timed out after 5 minutes. Please try again.");
       }
-    }, 30000);
+    }, 300000);
   }, [setError, setLoading]);
 
   const dispatch = useCallback(

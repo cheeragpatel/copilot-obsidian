@@ -125,7 +125,7 @@ describe("ChatInput", () => {
     const user = userEvent.setup();
     const onAbort = vi.fn();
 
-    renderWithContext(<ChatInput onSend={vi.fn()} onAbort={onAbort} onModeSwitch={vi.fn()} isLoading />);
+    renderWithContext(<ChatInput onSend={vi.fn()} onAbort={onAbort} onModeSwitch={vi.fn()} isLoading isTaskRunning />);
 
     await user.click(screen.getByRole("button", { name: /Stop/ }));
 

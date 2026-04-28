@@ -27,6 +27,7 @@ interface ChatInputProps {
   onMCPRefresh?: () => void;
   onAddAgent?: (agent: CustomAgentEntry) => void;
   isLoading: boolean;
+  isTaskRunning: boolean;
   canRetry?: boolean;
 }
 
@@ -43,6 +44,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onMCPRefresh,
   onAddAgent,
   isLoading,
+  isTaskRunning,
   canRetry,
 }) => {
   const [input, setInput] = useState("");
@@ -284,7 +286,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             >
               📎
             </button>
-            {isLoading ? (
+            {isTaskRunning ? (
               <button type="button" className="copilot-chat-stop-btn" onClick={onAbort}>
                 ■ Stop
               </button>
