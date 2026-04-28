@@ -50,5 +50,16 @@ export interface PendingPermission {
   id: string;
   kind: string;
   details: Record<string, unknown>;
-  resolve: (result: { kind: "approved" } | { kind: "denied-by-rules"; rules: unknown[] }) => void;
+  resolve: (result: PermissionRequestResult) => void;
 }
+
+/**
+ * SDK-compatible permission result union.
+ * Must stay in sync with @github/copilot-sdk PermissionRequestResult.
+ */
+export type PermissionRequestResult =
+  | { kind: "approved" }
+  | { kind: "denied-by-rules"; rules: unknown[] }
+  | { kind: "denied-no-approval-rule-and-could-not-request-from-user" }
+  | { kind: "denied-interactively-by-user"; feedback?: string }
+  | { kind: "denied-by-content-exclusion-policy"; path: string; message: string };

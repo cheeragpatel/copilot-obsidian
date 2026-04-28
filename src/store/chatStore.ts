@@ -496,15 +496,20 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
 
   resolvePermission: (approved, scope) => {
     const perm = get().pendingPermission;
-    if (!perm) return;
+    if (!perm) {
+      console.warn("[Copilot] resolvePermission called but no pending permission found");
+      return;
+    }
 
     if (approved) {
       const key = permissionKey(perm.details as { kind: string; [key: string]: unknown });
       if (scope === "session") addSessionPermission(key);
       if (scope === "permanent") addPermanentPermission(key);
+      console.debug("[Copilot] Permission approved:", perm.kind, "scope:", scope);
       perm.resolve({ kind: "approved" });
     } else {
-      perm.resolve({ kind: "denied-by-rules", rules: [{ description: "User denied" }] });
+      console.debug("[Copilot] Permission denied by user:", perm.kind);
+      perm.resolve({ kind: "denied-interactively-by-user", feedback: "User denied" });
     }
 
     set({ pendingPermission: null });

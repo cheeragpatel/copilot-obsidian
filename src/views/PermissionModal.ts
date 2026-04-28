@@ -1,5 +1,6 @@
 import { App, Modal } from "obsidian";
 import type { PluginSettings } from "../types/settings";
+import type { PermissionRequestResult } from "../types/chat";
 
 export interface PermissionPromptOptions {
   kind: string;
@@ -247,8 +248,8 @@ export function promptPermission(
   app: App,
   request: { kind: string; [key: string]: unknown },
   settings?: PluginSettings,
-  inlineHandler?: (request: { kind: string; [key: string]: unknown }, resolve: (result: { kind: "approved" } | { kind: "denied-by-rules"; rules: unknown[] }) => void) => void,
-): Promise<{ kind: "approved" } | { kind: "denied-by-rules"; rules: unknown[] }> {
+  inlineHandler?: (request: { kind: string; [key: string]: unknown }, resolve: (result: PermissionRequestResult) => void) => void,
+): Promise<PermissionRequestResult> {
   // Autopilot bypass — auto-approve before any cache lookup or modal.
   if (autopilotEnabled) {
     return Promise.resolve({ kind: "approved" });
@@ -307,7 +308,7 @@ export function promptPermission(
           }
           resolve({ kind: "approved" });
         } else {
-          resolve({ kind: "denied-by-rules", rules: [{ description: "User denied" }] });
+          resolve({ kind: "denied-interactively-by-user", feedback: "User denied" });
         }
       },
     );
