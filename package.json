@@ -33,28 +33,28 @@
     "@types/node": "^20.19.37",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.0.0",
-    "@vitest/coverage-v8": "^4.1.4",
+    "@vitest/coverage-v8": "^4.1.5",
     "builtin-modules": "3.3.0",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.0",
     "eslint": "^8.57.1",
     "eslint-plugin-react-hooks": "^5.0.0",
-    "jsdom": "^29.0.2",
+    "jsdom": "^29.1.0",
     "obsidian": "^1.12.3",
     "prettier": "^3.3.3",
-    "tslib": "2.4.0",
+    "tslib": "2.8.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"
   },
   "dependencies": {
-    "@github/copilot-sdk": "^0.1.32",
+    "@github/copilot-sdk": "^0.3.0",
     "@types/react-syntax-highlighter": "^15.5.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^15.6.1 || ^16.0.0",
     "remark-gfm": "^4.0.1",
-    "zustand": "^5.0.3"
+    "zustand": "^5.0.12"
   }
 }
