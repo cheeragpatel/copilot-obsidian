@@ -141,7 +141,7 @@ describe("ConfigDiscovery", () => {
   });
 
   it("warns and skips invalid MCP config files", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const mockLogger = { debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() };
     mockApp._addFile(".github/copilot/mcp.json", "{invalid json");
     mockApp._addFile(
       ".copilot/mcp.json",
@@ -151,7 +151,7 @@ describe("ConfigDiscovery", () => {
         },
       }),
     );
-    const discovery = new ConfigDiscovery(mockApp as any);
+    const discovery = new ConfigDiscovery(mockApp as any, mockLogger as any);
 
     const config = await discovery.discover();
 
@@ -169,8 +169,8 @@ describe("ConfigDiscovery", () => {
         source: "vault",
       },
     ]);
-    expect(warnSpy).toHaveBeenCalledWith(
-      "[Copilot] Failed to parse .github/copilot/mcp.json:",
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      "[ConfigDiscovery] Failed to parse .github/copilot/mcp.json:",
       expect.any(String),
     );
   });
@@ -319,7 +319,7 @@ describe("ConfigDiscovery", () => {
   });
 
   it("warns and skips invalid home MCP config files", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const mockLogger = { debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() };
     const homeRoot = os.homedir() || "/Users/tester";
     const invalidPath = path.join(homeRoot, ".copilot", "mcp-config.json");
 
@@ -332,7 +332,7 @@ describe("ConfigDiscovery", () => {
       }),
     });
 
-    const discovery = new ConfigDiscovery(mockApp as any);
+    const discovery = new ConfigDiscovery(mockApp as any, mockLogger as any);
     const config = await discovery.discover();
 
     expect(config.mcpServers).toEqual([
@@ -349,8 +349,8 @@ describe("ConfigDiscovery", () => {
         source: "home",
       },
     ]);
-    expect(warnSpy).toHaveBeenCalledWith(
-      `[Copilot] Failed to parse ${invalidPath}:`,
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      `[ConfigDiscovery] Failed to parse ${invalidPath}:`,
       expect.any(String),
     );
   });
@@ -505,12 +505,12 @@ describe("ConfigDiscovery", () => {
       }),
     );
 
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const discovery = new ConfigDiscovery(mockApp as any);
+    const mockLogger = { debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() };
+    const discovery = new ConfigDiscovery(mockApp as any, mockLogger as any);
     const config = await discovery.discover();
 
     expect(config.mcpServers.map((s) => s.name).sort()).toEqual(["good", "stdioOk"]);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("missingUrl"));
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("missingCommand"));
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("missingUrl"));
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("missingCommand"));
   });
 });

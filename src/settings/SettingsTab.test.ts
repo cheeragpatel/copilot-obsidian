@@ -257,7 +257,7 @@ describe("CopilotSettingsTab", () => {
 
     expect(tab.containerEl.empty).toHaveBeenCalledTimes(1);
     expect(getSectionHeadings(tab)).toContain("General");
-    expect(settingInstances).toHaveLength(15);
+    expect(settingInstances).toHaveLength(16);
     expect(tab.containerEl.createEl).toHaveBeenCalledTimes(10);
     expect(getSetting("Copilot CLI path").textControl.placeholder).toBe("copilot");
     expect(getSetting("Default model").dropdownControl.value).toBe(plugin.settings.defaultModel);
