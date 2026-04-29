@@ -46,7 +46,7 @@ const MessageListImpl: React.FC<MessageListProps> = ({ messages }) => {
   // so the effect re-fires even when the messages array length is stable.
   const lastMsg = messages[messages.length - 1];
   const scrollTrigger = lastMsg
-    ? `${messages.length}:${(lastMsg.content?.length ?? 0)}:${(lastMsg.thinkingContent?.length ?? 0)}:${lastMsg.toolCalls?.length ?? 0}`
+    ? `${messages.length}:${(lastMsg.content?.length ?? 0)}:${(lastMsg.thinkingContent?.length ?? 0)}:${lastMsg.toolCalls?.map((tc) => `${tc.id}:${tc.status}:${tc.result?.length ?? 0}`).join("|") ?? ""}`
     : "0";
 
   useEffect(() => {

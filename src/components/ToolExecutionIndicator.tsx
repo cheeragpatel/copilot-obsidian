@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import type { ToolCallInfo } from "../types/chat";
 
 interface ToolExecutionIndicatorProps {
@@ -7,8 +7,14 @@ interface ToolExecutionIndicatorProps {
 }
 
 const ToolCallItem: React.FC<{ tc: ToolCallInfo }> = ({ tc }) => {
-  const [expanded, setExpanded] = useState(false);
   const hasOutput = !!tc.result;
+  const [expanded, setExpanded] = useState(tc.status === "error" && hasOutput);
+
+  useEffect(() => {
+    if (tc.status === "error" && hasOutput) {
+      setExpanded(true);
+    }
+  }, [hasOutput, tc.status]);
 
   const toggle = useCallback(() => {
     if (hasOutput) setExpanded((prev) => !prev);

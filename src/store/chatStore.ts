@@ -53,6 +53,7 @@ interface ChatActions {
   updateToolCallById: (id: string, patch: ToolPatch) => void;
   completeToolCallById: (id: string, ok: boolean, result?: string) => void;
   completeAllToolCalls: () => void;
+  failRunningToolCalls: (result: string) => void;
   clearMessages: () => void;
   setMessages: (messages: ChatMessage[]) => void;
   setMode: (mode: ChatMode) => void;
@@ -132,6 +133,11 @@ function updateLastAssistant(
     }
   }
   return { messages, changed: false };
+}
+
+function getPermissionToolCallId(details: Record<string, unknown>): string | undefined {
+  const value = details.toolCallId || details.tool_call_id || details.tool_callid;
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
@@ -267,6 +273,25 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
           if (hasRunning) {
             const toolCalls = messages[i].toolCalls!.map((tc) =>
               tc.status === "running" ? { ...tc, status: "complete" as const } : tc,
+            );
+            messages[i] = { ...messages[i], toolCalls };
+            changed = true;
+          }
+        }
+      }
+      return changed ? { messages } : state;
+    }),
+
+  failRunningToolCalls: (result) =>
+    set((state) => {
+      const messages = [...state.messages];
+      let changed = false;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === "assistant" && messages[i].toolCalls) {
+          const hasRunning = messages[i].toolCalls!.some((tc) => tc.status === "running");
+          if (hasRunning) {
+            const toolCalls = messages[i].toolCalls!.map((tc) =>
+              tc.status === "running" ? { ...tc, status: "error" as const, result } : tc,
             );
             messages[i] = { ...messages[i], toolCalls };
             changed = true;
@@ -516,7 +541,38 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       selectedAgent: null,
     }),
 
-  setPendingPermission: (perm) => set((s) => ({ pendingPermissions: [...s.pendingPermissions, perm] })),
+  setPendingPermission: (perm) =>
+    set((state) => {
+      const toolCallId = getPermissionToolCallId(perm.details);
+      if (!toolCallId) {
+        return { pendingPermissions: [...state.pendingPermissions, perm] };
+      }
+
+      const messages = state.messages.slice();
+      let changed = false;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (msg.role !== "assistant" || !msg.toolCalls) continue;
+        let localChange = false;
+        const toolCalls = msg.toolCalls.map((tc) => {
+          if (tc.id === toolCallId && tc.status === "running") {
+            localChange = true;
+            return { ...tc, result: "Waiting for permission approval..." };
+          }
+          return tc;
+        });
+        if (localChange) {
+          messages[i] = { ...msg, toolCalls };
+          changed = true;
+          break;
+        }
+      }
+
+      return {
+        pendingPermissions: [...state.pendingPermissions, perm],
+        ...(changed ? { messages } : {}),
+      };
+    }),
 
   resolvePermission: (approved, scope) => {
     const perm = get().pendingPermissions[0];
@@ -530,9 +586,20 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       if (scope === "session") addSessionPermission(key);
       if (scope === "permanent") addPermanentPermission(key);
       console.debug("[Copilot] Permission approved:", perm.kind, "scope:", scope);
+      const toolCallId = getPermissionToolCallId(perm.details);
+      if (toolCallId) {
+        get().updateToolCallById(toolCallId, {
+          status: "running",
+          result: "Permission granted. Running tool...",
+        });
+      }
       perm.resolve({ kind: "approved" });
     } else {
       console.debug("[Copilot] Permission denied by user:", perm.kind);
+      const toolCallId = getPermissionToolCallId(perm.details);
+      if (toolCallId) {
+        get().updateToolCallById(toolCallId, { status: "error", result: "Permission denied by user." });
+      }
       perm.resolve({ kind: "denied-interactively-by-user", feedback: "User denied" });
     }
 

@@ -762,6 +762,70 @@ describe("CopilotChatPanel", () => {
     ]);
   });
 
+  it("surfaces failed tool execution error messages in the tool call", async () => {
+    const handlers: Array<(event: any) => void> = [];
+    mockService.onEvent.mockImplementation((handler: (event: any) => void) => {
+      handlers.push(handler);
+      return vi.fn();
+    });
+
+    await renderPanel();
+
+    await act(async () => {
+      handlers[0]?.({
+        type: "tool.execution_start",
+        data: { toolCallId: "tool-call-1", toolName: "writeNote" },
+      });
+      handlers[0]?.({
+        type: "tool.execution_complete",
+        data: {
+          toolCallId: "tool-call-1",
+          success: false,
+          error: { message: "Permission denied", code: "permission_denied" },
+        },
+      });
+    });
+
+    const messages = useChatStore.getState().messages;
+    const toolCall = messages[messages.length - 1]?.toolCalls?.[0];
+    expect(toolCall).toMatchObject({
+      id: "tool-call-1",
+      name: "writeNote",
+      status: "error",
+      result: "Permission denied (permission_denied)",
+    });
+    expect(screen.getByText("Permission denied (permission_denied)")).toBeInTheDocument();
+  });
+
+  it("marks running tool calls as errored when the session errors", async () => {
+    const handlers: Array<(event: any) => void> = [];
+    mockService.onEvent.mockImplementation((handler: (event: any) => void) => {
+      handlers.push(handler);
+      return vi.fn();
+    });
+
+    await renderPanel();
+
+    await act(async () => {
+      handlers[0]?.({
+        type: "tool.execution_start",
+        data: { toolCallId: "tool-call-1", toolName: "writeNote" },
+      });
+      handlers[0]?.({
+        type: "session.error",
+        data: { message: "Tool crashed" },
+      });
+    });
+
+    expect(useChatStore.getState().error).toBe("Tool crashed");
+    const messages = useChatStore.getState().messages;
+    expect(messages[messages.length - 1]?.toolCalls?.[0]).toMatchObject({
+      id: "tool-call-1",
+      status: "error",
+      result: "Tool crashed",
+    });
+  });
+
   describe("error recovery", () => {
     it("shows error banner when sendMessage fails", async () => {
       const user = userEvent.setup();

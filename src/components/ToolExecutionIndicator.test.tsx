@@ -27,6 +27,14 @@ describe("ToolExecutionIndicator", () => {
     expect(screen.getByText("✗")).toBeInTheDocument();
   });
 
+  it("shows error output by default when an error message is present", () => {
+    renderIndicator([
+      { id: "t3", name: "writeNote", status: "error", result: "Permission denied" },
+    ]);
+
+    expect(screen.getByText("Permission denied")).toBeInTheDocument();
+  });
+
   it("renders multiple tool calls", () => {
     const { container } = renderIndicator([
       { id: "t4", name: "searchVault", status: "running" },
