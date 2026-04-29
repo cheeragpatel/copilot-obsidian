@@ -86,13 +86,13 @@ function parseFrontmatter(content: string): Record<string, string> {
 export class ConfigDiscovery {
   private app: App;
   private cache?: { result: DiscoveredConfig; timestamp: number };
-  private logger: Logger;
+  private logger?: Logger;
   private static readonly CACHE_TTL_MS = 5000;
 
-  constructor(app: App, logger: Logger) {
+  constructor(app: App, logger?: Logger) {
     this.app = app;
     this.logger = logger;
-    this.logger.debug("[ConfigDiscovery] Initialized");
+    this.logger?.debug("[ConfigDiscovery] Initialized");
   }
 
   /**
@@ -147,7 +147,7 @@ export class ConfigDiscovery {
       try {
         return await this.app.vault.read(indexed);
       } catch (error) {
-        this.logger.warn(`[ConfigDiscovery] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
+        this.logger?.warn(`[ConfigDiscovery] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
         return null;
       }
     }
@@ -157,7 +157,7 @@ export class ConfigDiscovery {
       if (!(await adapter.exists(path))) return null;
       return await adapter.read(path);
     } catch (error) {
-      this.logger.warn(`[ConfigDiscovery] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
+      this.logger?.warn(`[ConfigDiscovery] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
       return null;
     }
   }
@@ -243,7 +243,7 @@ export class ConfigDiscovery {
       try {
         this.appendMCPServers(servers, seen, JSON.parse(content), "vault");
       } catch (error) {
-        this.logger.warn(`[ConfigDiscovery] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
+        this.logger?.warn(`[ConfigDiscovery] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
       }
     }
 
@@ -277,7 +277,7 @@ export class ConfigDiscovery {
           const content = fs.readFileSync(candidate, "utf-8");
           this.appendMCPServers(servers, seen, JSON.parse(content), "home");
         } catch (error) {
-          this.logger.warn(`[ConfigDiscovery] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
+          this.logger?.warn(`[ConfigDiscovery] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
         }
       }
     } catch {
@@ -314,11 +314,11 @@ export class ConfigDiscovery {
         // a stdio server needs a command. Skip silently-broken entries
         // so a typo in one server doesn't sink the whole config.
         if (type === "http" && !entry.url) {
-          this.logger.warn(`[ConfigDiscovery] Skipping MCP server "${name}": http transport requires a url`);
+          this.logger?.warn(`[ConfigDiscovery] Skipping MCP server "${name}": http transport requires a url`);
           continue;
         }
         if (type === "stdio" && !entry.command) {
-          this.logger.warn(`[ConfigDiscovery] Skipping MCP server "${name}": stdio transport requires a command`);
+          this.logger?.warn(`[ConfigDiscovery] Skipping MCP server "${name}": stdio transport requires a command`);
           continue;
         }
 

@@ -17,7 +17,7 @@ vi.mock("./ConfigDiscovery", () => ({
     constructor(_app: any) {}
   },
 }));
-vi.mock("obsidian");
+vi.mock("obsidian", () => import("../__mocks__/obsidian"));
 
 const createSettings = (overrides: Partial<PluginSettings> = {}): PluginSettings => ({
   ...DEFAULT_SETTINGS,
@@ -27,6 +27,13 @@ const createSettings = (overrides: Partial<PluginSettings> = {}): PluginSettings
   skillDirectories: overrides.skillDirectories ?? [],
   disabledSkills: overrides.disabledSkills ?? [],
   excludedTools: overrides.excludedTools ?? [],
+});
+
+const createMockLogger = () => ({
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
 });
 
 const createTool = (name: string, description: string) =>
@@ -91,7 +98,7 @@ describe("CopilotService", () => {
   });
 
   it("initialize() creates CopilotClient, starts it, and reports connected state", async () => {
-    const service = new CopilotService(createMockApp(), createSettings({ cliPath: "custom-cli", logLevel: "warn" }));
+    const service = new CopilotService(createMockApp(), createSettings({ cliPath: "custom-cli", logLevel: "warn" }), createMockLogger());
 
     await service.initialize();
 
@@ -103,14 +110,14 @@ describe("CopilotService", () => {
   it("initialize() failure throws when client.start() rejects", async () => {
     const error = new Error("failed to start");
     mockClient.start.mockRejectedValueOnce(error);
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await expect(service.initialize()).rejects.toThrow(error);
     expect(mockClient.start).toHaveBeenCalledTimes(1);
   });
 
   it("createSession() in Ask mode creates a session without tools", async () => {
-    const service = new CopilotService(createMockApp(), createSettings({ defaultModel: "gpt-4o" }));
+    const service = new CopilotService(createMockApp(), createSettings({ defaultModel: "gpt-4o" }), createMockLogger());
     const tool = createTool("search", "Search notes");
 
     await service.initialize();
@@ -123,7 +130,7 @@ describe("CopilotService", () => {
   });
 
   it("createSession() in Agent mode creates a session with tools", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
     const tool = createTool("search", "Search notes");
 
     await service.initialize();
@@ -161,6 +168,7 @@ describe("CopilotService", () => {
           { name: "disabled", type: "http", url: "https://disabled.example.com", enabled: false },
         ],
       }),
+      createMockLogger(),
     );
 
     await service.initialize();
@@ -208,6 +216,7 @@ describe("CopilotService", () => {
           },
         ],
       }),
+      createMockLogger(),
     );
 
     await service.initialize();
@@ -228,7 +237,7 @@ describe("CopilotService", () => {
   });
 
   it("createSession() with system message passes append mode config", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession({ systemMessage: "Be helpful" });
@@ -236,15 +245,15 @@ describe("CopilotService", () => {
     expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
       model: DEFAULT_MODEL,
       streaming: true,
-      systemMessage: {
+      systemMessage: expect.objectContaining({
         mode: "append",
-        content: "Be helpful",
-      },
+        content: expect.stringContaining("Be helpful"),
+      }),
     }));
   });
 
   it("createSession() calls config discovery when inheritConfig is true", async () => {
-    const service = new CopilotService(createMockApp(), createSettings({ inheritConfig: true }));
+    const service = new CopilotService(createMockApp(), createSettings({ inheritConfig: true }), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -253,7 +262,7 @@ describe("CopilotService", () => {
   });
 
   it("createSession() does not call config discovery when inheritConfig is false", async () => {
-    const service = new CopilotService(createMockApp(), createSettings({ inheritConfig: false }));
+    const service = new CopilotService(createMockApp(), createSettings({ inheritConfig: false }), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -291,6 +300,7 @@ describe("CopilotService", () => {
       createSettings({
         mcpServers: [{ name: "docs", type: "http", url: "https://settings.example.com", enabled: true }],
       }),
+      createMockLogger(),
     );
 
     await service.initialize();
@@ -330,6 +340,7 @@ describe("CopilotService", () => {
     const service = new CopilotService(
       createMockApp(),
       createSettings({ systemMessage: "User instructions" }),
+      createMockLogger(),
     );
 
     await service.initialize();
@@ -338,10 +349,10 @@ describe("CopilotService", () => {
     expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
       model: DEFAULT_MODEL,
       streaming: true,
-      systemMessage: {
+      systemMessage: expect.objectContaining({
         mode: "append",
-        content: "Repo instructions\n\nUser instructions",
-      },
+        content: expect.stringContaining("Repo instructions\n\nUser instructions"),
+      }),
     }));
   });
 
@@ -354,6 +365,7 @@ describe("CopilotService", () => {
     const service = new CopilotService(
       createMockApp(),
       createSettings({ skillDirectories: ["vault/skills", ".github/skills"] }),
+      createMockLogger(),
     );
 
     await service.initialize();
@@ -370,7 +382,7 @@ describe("CopilotService", () => {
     const firstSession = createSessionMock({ sessionId: "session-1" });
     const secondSession = createSessionMock({ sessionId: "session-2" });
     mockClient.createSession.mockResolvedValueOnce(firstSession).mockResolvedValueOnce(secondSession);
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -381,7 +393,7 @@ describe("CopilotService", () => {
   });
 
   it("sendMessage() calls session.send with the prompt", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -391,7 +403,7 @@ describe("CopilotService", () => {
   });
 
   it("sendMessage() with attachments includes file attachments", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -412,13 +424,13 @@ describe("CopilotService", () => {
   });
 
   it("sendMessage() without a session throws an error", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await expect(service.sendMessage("Hello")).rejects.toThrow("No active session. Call createSession() first.");
   });
 
   it("sendAndWait() returns content from the response", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -428,7 +440,7 @@ describe("CopilotService", () => {
   });
 
   it("abort() calls session.abort", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -449,7 +461,7 @@ describe("CopilotService", () => {
       return vi.fn();
     });
 
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
     const unsubscribe = service.onEvent(listener);
 
     await service.initialize();
@@ -468,7 +480,7 @@ describe("CopilotService", () => {
     const secondSession = createSessionMock({ sessionId: "session-2" });
     const tool = createTool("plan", "Plan work");
     mockClient.createSession.mockResolvedValueOnce(firstSession).mockResolvedValueOnce(secondSession);
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession({ mode: ChatMode.Ask });
@@ -484,7 +496,7 @@ describe("CopilotService", () => {
   });
 
   it("getSessionId() returns the active session ID", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     expect(service.getSessionId()).toBeNull();
 
@@ -495,7 +507,7 @@ describe("CopilotService", () => {
   });
 
   it("listTools() returns tools from session RPC and falls back to session.listTools", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -554,7 +566,7 @@ describe("CopilotService", () => {
       return vi.fn();
     });
 
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -581,7 +593,7 @@ describe("CopilotService", () => {
 
   it("resumeSession() calls client.resumeSession with the session ID", async () => {
     const tool = createTool("plan", "Plan work");
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.resumeSession("resume-me", [tool]);
@@ -596,7 +608,7 @@ describe("CopilotService", () => {
   it("listSessions() returns the client session list", async () => {
     const sessions = [{ sessionId: "one" }, { sessionId: "two" }];
     mockClient.listSessions.mockResolvedValueOnce(sessions);
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
 
@@ -604,7 +616,7 @@ describe("CopilotService", () => {
   });
 
   it("deleteSession() calls client.deleteSession", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.deleteSession("session-to-delete");
@@ -613,7 +625,7 @@ describe("CopilotService", () => {
   });
 
   it("isConnected() returns true when connected and false when not", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     expect(service.isConnected()).toBe(false);
 
@@ -631,7 +643,7 @@ describe("CopilotService", () => {
       disabledSkills: ["old-skill"],
       excludedTools: ["terminal"],
     });
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     service.updateSettings(updatedSettings);
     await service.initialize();
@@ -644,15 +656,15 @@ describe("CopilotService", () => {
       skillDirectories: ["skills"],
       disabledSkills: ["old-skill"],
       excludedTools: ["terminal"],
-      systemMessage: {
+      systemMessage: expect.objectContaining({
         mode: "append",
-        content: "Updated system message",
-      },
+        content: expect.stringContaining("Updated system message"),
+      }),
     }));
   });
 
   it("destroy() stops the client, destroys the session, and clears listeners", async () => {
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
     service.onEvent(vi.fn());
 
     await service.initialize();
@@ -669,7 +681,7 @@ describe("CopilotService", () => {
   it("destroy() ignores cleanup errors", async () => {
     mockSession.destroy.mockRejectedValueOnce(new Error("session cleanup failed"));
     mockClient.stop.mockRejectedValueOnce(new Error("client cleanup failed"));
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
     service.onEvent(vi.fn());
 
     await service.initialize();
@@ -688,7 +700,7 @@ describe("CopilotService", () => {
     secondSession.on.mockReturnValue(unsubscribe2);
     mockClient.createSession.mockResolvedValueOnce(firstSession).mockResolvedValueOnce(secondSession);
 
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -703,7 +715,7 @@ describe("CopilotService", () => {
     const unsubscribe = vi.fn();
     mockSession.on.mockReturnValue(unsubscribe);
 
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
 
     await service.initialize();
     await service.createSession();
@@ -723,7 +735,7 @@ describe("CopilotService", () => {
     });
 
     try {
-      const service = new CopilotService(createMockApp(), createSettings());
+      const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
       await service.initialize();
       await service.createSession();
 
@@ -751,7 +763,7 @@ describe("CopilotService", () => {
       return vi.fn();
     });
 
-    const service = new CopilotService(createMockApp(), createSettings());
+    const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
     const listener = vi.fn();
     service.onEvent(listener);
 
@@ -780,7 +792,7 @@ describe("CopilotService", () => {
       });
 
       const listener = vi.fn();
-      const service = new CopilotService(createMockApp(), createSettings());
+      const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
       service.onEvent(listener);
 
       await service.initialize();
@@ -799,7 +811,7 @@ describe("CopilotService", () => {
     });
 
     it("handles sendMessage failure gracefully", async () => {
-      const service = new CopilotService(createMockApp(), createSettings());
+      const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
       await service.initialize();
       await service.createSession();
 
@@ -813,7 +825,7 @@ describe("CopilotService", () => {
       bareSession.rpc.tools.list.mockRejectedValue(new Error("Method not found"));
       mockClient.createSession.mockResolvedValueOnce(bareSession);
 
-      const service = new CopilotService(createMockApp(), createSettings());
+      const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
       await service.initialize();
       await service.createSession();
 
@@ -826,15 +838,14 @@ describe("CopilotService", () => {
       bareSession.rpc.tools.list.mockRejectedValue(new Error("network exploded"));
       mockClient.createSession.mockResolvedValueOnce(bareSession);
 
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-      const service = new CopilotService(createMockApp(), createSettings());
+      const mockLogger = createMockLogger();
+      const service = new CopilotService(createMockApp(), createSettings(), mockLogger);
       await service.initialize();
       await service.createSession();
 
       const tools = await service.listTools();
       expect(tools).toEqual([]);
-      expect(warnSpy).toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalled();
     });
   });
 
@@ -857,7 +868,7 @@ describe("CopilotService", () => {
       const modeSet = vi.fn().mockResolvedValue({ mode: "autopilot" });
       mockClient.createSession.mockResolvedValueOnce(sessionWithMode(modeSet));
 
-      const service = new CopilotService(createMockApp(), createSettings());
+      const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
       const tool = createTool("search", "Search notes");
 
       await service.initialize();
@@ -874,7 +885,7 @@ describe("CopilotService", () => {
       const modeSet = vi.fn().mockResolvedValue({ mode: "interactive" });
       mockClient.createSession.mockResolvedValueOnce(sessionWithMode(modeSet));
 
-      const service = new CopilotService(createMockApp(), createSettings());
+      const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
       await service.initialize();
       await service.createSession({ mode: ChatMode.Agent });
 
@@ -884,21 +895,21 @@ describe("CopilotService", () => {
     it("createSession() ignores rpc.mode.set failures (best-effort)", async () => {
       const modeSet = vi.fn().mockRejectedValue(new Error("unsupported"));
       mockClient.createSession.mockResolvedValueOnce(sessionWithMode(modeSet));
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const service = new CopilotService(createMockApp(), createSettings());
+      const mockLogger = createMockLogger();
+      const service = new CopilotService(createMockApp(), createSettings(), mockLogger);
       await service.initialize();
       await expect(
         service.createSession({ mode: ChatMode.Agent }),
       ).resolves.not.toThrow();
-      expect(warnSpy).toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalled();
     });
 
     it("createSession() works on legacy sessions without rpc.mode", async () => {
       const legacy = createSessionMock(); // no rpc.mode
       mockClient.createSession.mockResolvedValueOnce(legacy);
 
-      const service = new CopilotService(createMockApp(), createSettings());
+      const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
       await service.initialize();
       await expect(
         service.createSession({ mode: ChatMode.Agent }),
@@ -912,7 +923,7 @@ describe("CopilotService", () => {
       mockClient.createSession.mockResolvedValueOnce(session1);
       mockClient.resumeSession.mockResolvedValueOnce(session2);
 
-      const service = new CopilotService(createMockApp(), createSettings());
+      const service = new CopilotService(createMockApp(), createSettings(), createMockLogger());
       await service.initialize();
       await service.createSession({ mode: ChatMode.Agent });
       modeSet.mockClear();

@@ -222,7 +222,7 @@ describe("CopilotPlugin", () => {
 
     await plugin.onload();
 
-    expect(CopilotService).toHaveBeenCalledWith(app, plugin.settings);
+    expect(CopilotService).toHaveBeenCalledWith(app, plugin.settings, plugin.logger);
     expect(plugin.copilotService).toBe(
       vi.mocked(CopilotService).mock.results[0]?.value,
     );
