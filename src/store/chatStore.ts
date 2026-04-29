@@ -20,7 +20,7 @@ interface ChatState {
   mcpServers: MCPServerState[];
   toolSelectionInitialized: Record<string, boolean>;
   _loadingTimeoutId: number | undefined;
-  pendingPermission: PendingPermission | null;
+  pendingPermissions: PendingPermission[];
 }
 
 type DiscoveredTool = { name: string; namespacedName?: string; description?: string };
@@ -29,7 +29,7 @@ type ToolPatch = Partial<Pick<ToolCallInfo, "status" | "result">>;
 /** Derived selector: true while any work is in progress (loading, streaming, tool running, or permission pending). */
 export function isTaskRunning(state: ChatState): boolean {
   if (state.isLoading) return true;
-  if (state.pendingPermission) return true;
+  if (state.pendingPermissions.length > 0) return true;
   const msgs = state.messages;
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i];
@@ -77,8 +77,9 @@ interface ChatActions {
   getEnabledMCPConfig: () => Record<string, any>;
   addCustomAgent: (agent: CustomAgentEntry) => void;
   newConversation: () => void;
-  setPendingPermission: (perm: PendingPermission | null) => void;
+  setPendingPermission: (perm: PendingPermission) => void;
   resolvePermission: (approved: boolean, scope: "once" | "session" | "permanent") => void;
+  appendThinkingContent: (delta: string) => void;
 }
 
 function generateId(): string {
@@ -150,7 +151,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   mcpServers: [],
   toolSelectionInitialized: {},
   _loadingTimeoutId: undefined,
-  pendingPermission: null,
+  pendingPermissions: [],
 
   // Actions
   addMessage: (message) =>
@@ -179,6 +180,14 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
     set((state) => {
       const { messages } = updateLastAssistant(state.messages, (msg) => ({
         content: msg.content + delta,
+      }));
+      return { messages };
+    }),
+
+  appendThinkingContent: (delta) =>
+    set((state) => {
+      const { messages } = updateLastAssistant(state.messages, (msg) => ({
+        thinkingContent: (msg.thinkingContent || "") + delta,
       }));
       return { messages };
     }),
@@ -507,10 +516,10 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       selectedAgent: null,
     }),
 
-  setPendingPermission: (perm) => set({ pendingPermission: perm }),
+  setPendingPermission: (perm) => set((s) => ({ pendingPermissions: [...s.pendingPermissions, perm] })),
 
   resolvePermission: (approved, scope) => {
-    const perm = get().pendingPermission;
+    const perm = get().pendingPermissions[0];
     if (!perm) {
       console.warn("[Copilot] resolvePermission called but no pending permission found");
       return;
@@ -527,7 +536,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       perm.resolve({ kind: "denied-interactively-by-user", feedback: "User denied" });
     }
 
-    set({ pendingPermission: null });
+    set((s) => ({ pendingPermissions: s.pendingPermissions.slice(1) }));
   },
 }));
 

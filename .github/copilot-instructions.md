@@ -20,7 +20,14 @@ src/
 │   └── ConfigDiscovery.ts   # Agent/MCP discovery from filesystem
 ├── store/
 │   └── chatStore.ts         # Zustand state (messages, mode, model, MCPs)
-├── components/              # React UI (chat panel, inputs, pickers)
+├── components/
+│   ├── CopilotChatPanel.tsx  # Main chat panel (messages, input, controls)
+│   ├── MessageBubble.tsx     # Individual message rendering
+│   ├── ToolCallBlock.tsx     # Collapsible tool call output
+│   ├── InlinePermissionPrompt.tsx  # Inline tool permission UI
+│   ├── ChatInput.tsx         # User input with slash commands
+│   ├── ChatControls.tsx      # Mode/model pickers, stop button
+│   └── MCPPicker.tsx         # MCP server toggle
 ├── views/
 │   ├── CopilotChatView.tsx  # Obsidian ItemView → React mount
 │   └── PermissionModal.ts   # Tool permission prompts
@@ -64,6 +71,11 @@ npm run test:coverage  # vitest with v8 coverage
 - Plugin context passed via `React.createContext` (provides `app`, `settings`, `copilotService`)
 - CSS uses Obsidian's CSS variables (`--text-normal`, `--background-primary`, `--interactive-accent`, etc.)
 - No external CSS frameworks — all styles in `styles.css`
+
+### Design Principles
+- **Vault-first tool resolution**: Always prefer `app.vault.*` APIs and vault tools over Node.js `fs` or shell commands for vault content. Shell/fs is only for files outside the vault (e.g., `~/.copilot/`).
+- **Interactive inline UX**: Permissions, confirmations, and errors appear inline in the chat thread — never external modals or terminal prompts.
+- **Responsive during operations**: UI must remain interactive (stop button, scroll, input) while streaming or executing tools.
 
 ### File System Access
 - Vault files: use `app.vault.read()`, `app.vault.create()`, `app.vault.modify()`
@@ -133,7 +145,7 @@ git worktree remove ../copilot-obsidian-feat-b
 
 4. **Electron PATH**: The Copilot CLI binary and `node` must be findable. `CopilotService` has `ensurePath()` and `resolveCliPath()` for this.
 
-5. **Permission modal**: Uses a nullable `resolvePromise` pattern to prevent double-resolution. `onClose()` always resolves as "deny" so Escape key works.
+5. **Permission lifecycle**: Permission requests display as `InlinePermissionPrompt` in the chat thread. Allow → store permission + retry the pending tool call via `retryToolCall()`. Deny → cancel tool, resolve as denied. `onClose()` resolves as deny (Escape key). Permission state tracked in `pendingPermission` Zustand field. The nullable `resolvePromise` pattern prevents double-resolution.
 
 6. **Tool call tracking**: Tool calls have unique `id` fields. `updateToolCall` matches the first *running* tool by name. `completeAllToolCalls` scans ALL messages.
 
@@ -142,7 +154,7 @@ git worktree remove ../copilot-obsidian-feat-b
 ### To local vault (development)
 ```bash
 npm run build
-cp main.js styles.css manifest.json /path/to/vault/.obsidian/plugins/github-copilot-chat/
+cp main.js styles.css manifest.json ~/Documents/obsidian/cheerag-github-vault/.obsidian/plugins/github-copilot-chat/
 ```
 
 ### GitHub Release
@@ -176,3 +188,17 @@ Create in `src/components/`, add test file, import in parent component. Use `use
 
 ### New MCP server support
 MCP servers auto-discover from `~/.copilot/mcp.json`, vault `.copilot/mcp.json`, and plugin settings. Users toggle them via the ⚡ MCP picker in the chat controls.
+
+## UI Component Patterns
+
+### Collapsible tool call output
+`ToolCallBlock.tsx` renders tool calls inside `<details>` elements — collapsed by default, expandable on click. Tool name and status show in the summary; full output inside. This keeps the chat readable when agents execute many tools.
+
+### Autoscroll
+New content triggers `scrollIntoView({ behavior: 'smooth', block: 'end' })`. If the user has scrolled up (i.e., is not near the bottom), autoscroll pauses to avoid hijacking their position. Re-engage autoscroll when the user scrolls back to the bottom.
+
+### Inline permission prompts
+`InlinePermissionPrompt.tsx` renders Allow/Deny buttons directly in the chat thread when a tool requests permission. This replaces modal dialogs that block the UI. On Allow, the permission is stored and the tool call is retried via `retryToolCall()`. On Deny, the tool is cancelled.
+
+### Persistent stop button
+The stop/cancel button in `ChatControls.tsx` must remain visible whenever work is in progress. Visibility is driven by Zustand state: show when `isGenerating || isWaitingForPermission` is true. This ensures the user can always cancel, even during tool execution or permission waits.

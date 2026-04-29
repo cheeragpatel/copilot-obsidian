@@ -14,6 +14,7 @@ import {
   normalizeEventType,
   type DiscoveredTool,
 } from "./SDKCompat";
+import type { Logger } from "../utils/logger";
 
 type EventCallback = (event: SessionEvent) => void;
 
@@ -38,6 +39,7 @@ export class CopilotService {
   private session: any = null;
   private settings: PluginSettings;
   private app: App;
+  private logger: Logger;
   private eventListeners: Set<EventCallback> = new Set();
   private discoveredTools: Map<string, DiscoveredTool> = new Map();
   private currentMode: ChatMode;
@@ -48,9 +50,10 @@ export class CopilotService {
   // and resumeSession() calls don't interleave destroy+create steps.
   private sessionLock: Promise<void> = Promise.resolve();
 
-  constructor(app: App, settings: PluginSettings) {
+  constructor(app: App, settings: PluginSettings, logger: Logger) {
     this.app = app;
     this.settings = settings;
+    this.logger = logger;
     this.currentMode = settings.defaultMode;
   }
 
@@ -81,7 +84,7 @@ export class CopilotService {
       const fs = window.require("fs");
       for (const candidate of candidates) {
         if (candidate && fs.existsSync(candidate)) {
-          console.log(`[Copilot] Found CLI at ${candidate}`);
+          this.logger.debug(`Found CLI at ${candidate}`);
           return candidate;
         }
       }
@@ -145,7 +148,9 @@ export class CopilotService {
 
       this.attachClientHealthListener();
     } catch (error) {
-      console.error("[Copilot] Failed to initialize client:", (error as Error)?.message || "Unknown error");
+      this.logger.error("Failed to initialize client:", {
+        message: (error as Error)?.message || "Unknown error",
+      });
       throw error;
     }
   }
@@ -328,13 +333,27 @@ export class CopilotService {
       ? (options.systemMessage ?? "")
       : this.settings.systemMessage;
 
+    // Vault identity context — always included so the model knows which vault it's operating in
+    const vaultName = this.app.vault.getName();
+    const basePath = (this.app.vault.adapter as any)?.getBasePath?.() || "";
+    const allFiles = this.app.vault.getFiles();
+    const mdFiles = this.app.vault.getMarkdownFiles();
+    const folders = new Set(allFiles.map((f: any) => f.parent?.path).filter(Boolean));
+    const vaultContext = [
+      `You are operating inside the Obsidian vault "${vaultName}".`,
+      basePath ? `Vault path: ${basePath}` : "",
+      `The vault contains ${mdFiles.length} notes across ${folders.size} folders (${allFiles.length} total files).`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     // When vault tools are available, instruct the model to prefer them over shell commands
     const vaultToolPriority =
       mode === ChatMode.Agent && options.tools
         ? "IMPORTANT: Always prefer vault tools (read_note, search_vault, list_notes, create_note, edit_note, get_active_note, get_note_metadata) over shell/command execution when the task can be accomplished within the Obsidian vault. Only fall back to shell scripts if the vault tools cannot fulfill the request."
         : "";
 
-    const combinedSystemMsg = [vaultToolPriority, discoveredConfig.instructions, systemMsg]
+    const combinedSystemMsg = [vaultContext, vaultToolPriority, discoveredConfig.instructions, systemMsg]
       .filter(Boolean)
       .join("\n\n");
 
@@ -419,10 +438,9 @@ export class CopilotService {
       const tools = await sdkDiscoverTools(this.session, this.client);
       return this.rememberDiscoveredTools(tools);
     } catch (error) {
-      console.warn(
-        "[Copilot] Tool discovery failed:",
-        (error as Error)?.message || error,
-      );
+      this.logger.warn("Tool discovery failed:", {
+        message: (error as Error)?.message || String(error),
+      });
       return this.rememberDiscoveredTools([]);
     }
   }
@@ -474,10 +492,9 @@ export class CopilotService {
     try {
       await setter.call(this.session.rpc.mode, { mode: cliMode });
     } catch (error) {
-      console.warn(
-        "[Copilot] Failed to set CLI agent mode:",
-        (error as Error)?.message || error,
-      );
+      this.logger.warn("Failed to set CLI agent mode:", {
+        message: (error as Error)?.message || String(error),
+      });
     }
   }
 

@@ -8,6 +8,13 @@ const EVENT_TYPE_MAP: Record<string, string> = {
   "tool.executionStart": "tool.execution_start",
   "tool.executionComplete": "tool.execution_complete",
   "assistant.message.delta": "assistant.message_delta",
+  // Thinking / reasoning event aliases
+  "assistant.thinking.delta": "assistant.thinking_delta",
+  "copilot.thinking.delta": "assistant.thinking_delta",
+  "response.thinking.delta": "assistant.thinking_delta",
+  "assistant.thinking.done": "assistant.thinking_done",
+  "copilot.thinking.done": "assistant.thinking_done",
+  "response.thinking.done": "assistant.thinking_done",
 };
 
 export function normalizeEventType(type: string): string {

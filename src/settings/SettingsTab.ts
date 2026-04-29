@@ -108,6 +108,18 @@ export class CopilotSettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Auto-approve vault tools")
+      .setDesc(
+        "Automatically approve vault tool calls (read_note, search_vault, etc.) without prompting. Disable to require explicit approval for every tool call.",
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.settings.defaultVaultToolPermissions).onChange(async (value) => {
+          this.settings.defaultVaultToolPermissions = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
       .setName("Conversation export folder")
       .setDesc("Folder where 'Export Copilot Conversation to Note' writes new notes.")
       .addText((text) =>

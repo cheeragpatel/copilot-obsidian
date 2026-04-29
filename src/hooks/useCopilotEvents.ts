@@ -19,6 +19,7 @@ export function useCopilotEvents(
 ): void {
   const addMessage = useChatStore((s) => s.addMessage);
   const appendToLastAssistantMessage = useChatStore((s) => s.appendToLastAssistantMessage);
+  const appendThinkingContent = useChatStore((s) => s.appendThinkingContent);
   const setLastMessageStreaming = useChatStore((s) => s.setLastMessageStreaming);
   const addToolCall = useChatStore((s) => s.addToolCall);
   const addToolCallWithId = useChatStore((s) => s.addToolCallWithId);
@@ -61,6 +62,31 @@ export function useCopilotEvents(
           }
           break;
         }
+        case "assistant.thinking_delta":
+        case "assistant.thinking.delta": {
+          const delta = event.data?.deltaContent || event.data?.content || event.data?.delta || "";
+          if (!delta) break;
+          const msgs = useChatStore.getState().messages;
+          const last = msgs[msgs.length - 1];
+          if (!last || last.role !== "assistant" || !last.isStreaming) {
+            addMessage({
+              id: generateId(),
+              role: "assistant",
+              content: "",
+              timestamp: Date.now(),
+              isStreaming: true,
+              thinkingContent: delta,
+              agentName: useChatStore.getState().selectedAgent || undefined,
+            });
+          } else {
+            appendThinkingContent(delta);
+          }
+          break;
+        }
+        case "assistant.thinking_done":
+        case "assistant.thinking.done":
+          // Thinking phase complete — content continues via message_delta
+          break;
         case "assistant.message":
           completeAllToolCalls();
           setLastMessageStreaming(false);
@@ -143,6 +169,7 @@ export function useCopilotEvents(
     addMessage,
     addToolCall,
     addToolCallWithId,
+    appendThinkingContent,
     appendToLastAssistantMessage,
     completeAllToolCalls,
     completeToolCallById,

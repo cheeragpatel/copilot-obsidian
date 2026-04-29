@@ -6,7 +6,7 @@ import { useChatStore } from "../store/chatStore";
  * Shows tool/permission details and 4 action buttons.
  */
 export const PermissionPromptInline: React.FC = () => {
-  const pendingPermission = useChatStore((s) => s.pendingPermission);
+  const pendingPermission = useChatStore((s) => s.pendingPermissions[0] ?? null);
   const resolvePermission = useChatStore((s) => s.resolvePermission);
 
   if (!pendingPermission) return null;

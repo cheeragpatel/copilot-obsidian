@@ -4,6 +4,7 @@ import { ItemView, WorkspaceLeaf } from "obsidian";
 import { COPILOT_CHAT_VIEW_TYPE } from "../types/constants";
 import { CopilotChatPanel } from "../components/CopilotChatPanel";
 import type { ConversationStoreLike } from "../services/ConversationStore";
+import type { Logger } from "../utils/logger";
 
 // Context for passing plugin reference to React components
 export interface CopilotPluginContext {
@@ -12,6 +13,7 @@ export interface CopilotPluginContext {
   copilotService: any;
   conversationStore: ConversationStoreLike;
   saveSettings: () => Promise<void>;
+  logger: Logger;
 }
 
 export const PluginContext = React.createContext<CopilotPluginContext | null>(null);
@@ -51,6 +53,7 @@ export class CopilotChatView extends ItemView {
             copilotService: this.plugin.copilotService,
             conversationStore: this.plugin.conversationStore,
             saveSettings: () => this.plugin.saveSettings(),
+            logger: this.plugin.logger,
           }}
         >
           <CopilotChatPanel />

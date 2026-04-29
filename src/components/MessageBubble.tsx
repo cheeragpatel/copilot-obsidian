@@ -103,7 +103,8 @@ const MessageBubbleImpl: React.FC<MessageBubbleProps> = ({ message }) => {
 
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
-  const isThinking = !isUser && !isSystem && message.isStreaming && !message.content;
+  const isThinking = !isUser && !isSystem && message.isStreaming && !message.content && !message.thinkingContent;
+  const isActivelyThinking = !isUser && !isSystem && message.isStreaming && !!message.thinkingContent;
   const isDone = !isUser && !isSystem && !message.isStreaming && message.content;
 
   if (isSystem) {
@@ -123,7 +124,7 @@ const MessageBubbleImpl: React.FC<MessageBubbleProps> = ({ message }) => {
         <span className="copilot-message-role">
           {isUser ? "You" : message.agentName ? `@${message.agentName}` : "Copilot"}
         </span>
-        {isThinking && (
+        {(isThinking || isActivelyThinking) && (
           <span className="copilot-thinking-badge">thinking…</span>
         )}
         {isDone && (
@@ -153,6 +154,13 @@ const MessageBubbleImpl: React.FC<MessageBubbleProps> = ({ message }) => {
 
       {message.toolCalls && message.toolCalls.length > 0 && (
         <ToolExecutionIndicator toolCalls={message.toolCalls} />
+      )}
+
+      {message.thinkingContent && (
+        <details className="copilot-thinking-content" open={isActivelyThinking && !message.content}>
+          <summary>💭 {isActivelyThinking && !message.content ? "Thinking…" : "Thought process"}</summary>
+          <div className="copilot-thinking-text">{message.thinkingContent}</div>
+        </details>
       )}
 
       <div className="copilot-message-body">

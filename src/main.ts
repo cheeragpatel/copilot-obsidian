@@ -13,16 +13,19 @@ import { DEFAULT_SETTINGS } from "./types/settings";
 import { normalizeSettings } from "./types/settings.normalize";
 import { clearSessionPermissions, setAutopilot } from "./views/PermissionModal";
 import { registerInlineEditorCommands } from "./features/InlineEditorCommands";
+import { Logger } from "./utils/logger";
 
 export default class CopilotPlugin extends Plugin {
   settings: PluginSettings = DEFAULT_SETTINGS;
   copilotService: CopilotService;
   conversationStore: ConversationStore;
+  logger: Logger;
 
   async onload() {
     await this.loadSettings();
 
-    this.copilotService = new CopilotService(this.app, this.settings);
+    this.logger = new Logger(this);
+    this.copilotService = new CopilotService(this.app, this.settings, this.logger);
     this.conversationStore = new ConversationStore(this);
 
     // Register the chat view

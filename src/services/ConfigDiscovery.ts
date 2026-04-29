@@ -1,6 +1,7 @@
 import * as os from "os";
 import type { App, TFile, TFolder } from "obsidian";
 import type { MCPServerEntry, CustomAgentEntry } from "../types/settings";
+import { Logger } from "../utils/Logger";
 
 export interface DiscoveredConfig {
   skills: string[];
@@ -87,8 +88,9 @@ export class ConfigDiscovery {
   private cache?: { result: DiscoveredConfig; timestamp: number };
   private static readonly CACHE_TTL_MS = 5000;
 
-  constructor(app: App) {
+  constructor(app: App, private logger: typeof Logger = Logger) {
     this.app = app;
+    this.logger.debug("[ConfigDiscovery] Initialized");
   }
 
   /**
@@ -143,7 +145,7 @@ export class ConfigDiscovery {
       try {
         return await this.app.vault.read(indexed);
       } catch (error) {
-        console.warn(`[Copilot] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
+        this.logger.warn(`[ConfigDiscovery] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
         return null;
       }
     }
@@ -153,7 +155,7 @@ export class ConfigDiscovery {
       if (!(await adapter.exists(path))) return null;
       return await adapter.read(path);
     } catch (error) {
-      console.warn(`[Copilot] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
+      this.logger.warn(`[ConfigDiscovery] Failed to read ${path}:`, (error as Error)?.message || "Unknown error");
       return null;
     }
   }
@@ -239,7 +241,7 @@ export class ConfigDiscovery {
       try {
         this.appendMCPServers(servers, seen, JSON.parse(content), "vault");
       } catch (error) {
-        console.warn(`[Copilot] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
+        this.logger.warn(`[ConfigDiscovery] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
       }
     }
 
@@ -273,7 +275,7 @@ export class ConfigDiscovery {
           const content = fs.readFileSync(candidate, "utf-8");
           this.appendMCPServers(servers, seen, JSON.parse(content), "home");
         } catch (error) {
-          console.warn(`[Copilot] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
+          this.logger.warn(`[ConfigDiscovery] Failed to parse ${candidate}:`, (error as Error)?.message || "Unknown error");
         }
       }
     } catch {
@@ -310,11 +312,11 @@ export class ConfigDiscovery {
         // a stdio server needs a command. Skip silently-broken entries
         // so a typo in one server doesn't sink the whole config.
         if (type === "http" && !entry.url) {
-          console.warn(`[Copilot] Skipping MCP server "${name}": http transport requires a url`);
+          this.logger.warn(`[ConfigDiscovery] Skipping MCP server "${name}": http transport requires a url`);
           continue;
         }
         if (type === "stdio" && !entry.command) {
-          console.warn(`[Copilot] Skipping MCP server "${name}": stdio transport requires a command`);
+          this.logger.warn(`[ConfigDiscovery] Skipping MCP server "${name}": stdio transport requires a command`);
           continue;
         }
 

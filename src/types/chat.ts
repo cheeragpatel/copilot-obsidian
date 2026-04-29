@@ -9,6 +9,8 @@ export interface ChatMessage {
   toolCalls?: ToolCallInfo[];
   attachments?: FileAttachment[];
   agentName?: string;
+  /** Extended thinking / reasoning content shown in a collapsible block. */
+  thinkingContent?: string;
 }
 
 export interface ToolCallInfo {
