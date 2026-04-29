@@ -107,7 +107,7 @@ export function useCopilotInitialization(
         let sessionMCPConfig = useChatStore.getState().getEnabledMCPConfig();
 
         try {
-          const discovery = new ConfigDiscovery(ctx.app);
+          const discovery = new ConfigDiscovery(ctx.app, ctx.logger);
           const config = await discovery.discover();
           if (config.agents.length > 0) {
             setDiscoveredAgents(config.agents);

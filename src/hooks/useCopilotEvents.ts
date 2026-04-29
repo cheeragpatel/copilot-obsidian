@@ -7,6 +7,54 @@ interface SaveConversation {
   (): Promise<void> | void;
 }
 
+function stringifyToolValue(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (value === undefined) return undefined;
+  return JSON.stringify(value);
+}
+
+function toolContentBlockToText(block: any): string | undefined {
+  if (!block || typeof block !== "object") return undefined;
+  if (typeof block.text === "string") return block.text;
+  if (typeof block.resource?.text === "string") return block.resource.text;
+  if (typeof block.title === "string" && typeof block.uri === "string") {
+    return `${block.title}: ${block.uri}`;
+  }
+  return undefined;
+}
+
+function formatToolResult(data: any): string | undefined {
+  const result = data?.result;
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object") {
+    if (typeof result.detailedContent === "string") return result.detailedContent;
+    if (typeof result.content === "string") return result.content;
+    if (Array.isArray(result.contents)) {
+      const text = result.contents
+        .map(toolContentBlockToText)
+        .filter((part: string | undefined): part is string => !!part)
+        .join("\n");
+      if (text) return text;
+    }
+    if (typeof result.error === "string") return result.error;
+  }
+  return stringifyToolValue(result);
+}
+
+function formatToolError(data: any): string {
+  const error = data?.error;
+  const message =
+    (typeof error === "string" && error) ||
+    (typeof error?.message === "string" && error.message) ||
+    (typeof data?.message === "string" && data.message) ||
+    (typeof data?.result?.error === "string" && data.result.error) ||
+    formatToolResult(data) ||
+    "Tool execution failed";
+
+  const code = typeof error?.code === "string" && error.code ? ` (${error.code})` : "";
+  return `${message}${code}`;
+}
+
 /**
  * Subscribes to Copilot SDK events and forwards them to the chat store.
  * The handler is intentionally a single big switch — it must stay in sync
@@ -26,6 +74,7 @@ export function useCopilotEvents(
   const completeToolCallById = useChatStore((s) => s.completeToolCallById);
   const updateToolCall = useChatStore((s) => s.updateToolCall);
   const completeAllToolCalls = useChatStore((s) => s.completeAllToolCalls);
+  const failRunningToolCalls = useChatStore((s) => s.failRunningToolCalls);
   const setLoading = useChatStore((s) => s.setLoading);
   const setError = useChatStore((s) => s.setError);
   const mergeDiscoveredMCPTool = useChatStore((s) => s.mergeDiscoveredMCPTool);
@@ -135,10 +184,7 @@ export function useCopilotEvents(
         case "tool.executionComplete": {
           const toolCallId = event.data?.tool_call_id || event.data?.toolCallId;
           const success = event.data?.success !== false;
-          const result =
-            typeof event.data?.result === "string"
-              ? event.data.result
-              : JSON.stringify(event.data?.result);
+          const result = success ? formatToolResult(event.data) : formatToolError(event.data);
           if (toolCallId) {
             completeToolCallById(toolCallId, success, result);
           } else {
@@ -150,8 +196,24 @@ export function useCopilotEvents(
           }
           break;
         }
+        case "tool.execution_error":
+        case "tool.execution.error": {
+          const toolCallId = event.data?.tool_call_id || event.data?.toolCallId;
+          const result = formatToolError(event.data);
+          if (toolCallId) {
+            completeToolCallById(toolCallId, false, result);
+          } else {
+            updateToolCall(
+              event.data?.mcpToolName || event.data?.name || event.data?.toolName || "tool",
+              "error",
+              result,
+            );
+          }
+          break;
+        }
         case "session.error":
           setError(friendlyError(event.data?.message || "An error occurred"));
+          failRunningToolCalls(friendlyError(event.data?.message || "An error occurred"));
           setLoading(false);
           break;
         case "session.idle":
@@ -173,6 +235,7 @@ export function useCopilotEvents(
     appendToLastAssistantMessage,
     completeAllToolCalls,
     completeToolCallById,
+    failRunningToolCalls,
     mergeDiscoveredMCPTool,
     saveConversation,
     setError,

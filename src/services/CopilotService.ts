@@ -232,7 +232,7 @@ export class CopilotService {
     } = { skills: [], mcpServers: [], instructions: "", agents: [] };
 
     if (this.settings.inheritConfig) {
-      const discovery = new ConfigDiscovery(this.app);
+      const discovery = new ConfigDiscovery(this.app, this.logger);
       const result = await discovery.discover();
       discoveredConfig = {
         skills: result.skills ?? [],

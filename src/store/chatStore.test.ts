@@ -18,6 +18,7 @@ const initialState = {
   mcpServers: [] as MCPServerState[],
   toolSelectionInitialized: {} as Record<string, boolean>,
   _loadingTimeoutId: undefined as number | undefined,
+  pendingPermissions: [],
 };
 
 let messageCounter = 0;
@@ -200,6 +201,79 @@ describe("useChatStore", () => {
         ],
       },
     ]);
+  });
+
+  it("marks running tool calls as errors with the provided message", () => {
+    const firstTool = createToolCall({ id: "search", name: "searchVault", status: "running" });
+    const secondTool = createToolCall({ id: "read", name: "readFile", status: "complete" });
+    const message = createMessage({ toolCalls: [firstTool, secondTool] });
+
+    useChatStore.setState({ messages: [message] });
+    useChatStore.getState().failRunningToolCalls("Session failed");
+
+    expect(useChatStore.getState().messages[0].toolCalls).toEqual([
+      { ...firstTool, status: "error", result: "Session failed" },
+      secondTool,
+    ]);
+  });
+
+  it("shows permission wait state and updates the tool call after approval", () => {
+    const resolve = vi.fn();
+    const toolCall = createToolCall({ id: "tool-call-1", name: "writeNote", status: "running" });
+    const message = createMessage({ toolCalls: [toolCall] });
+
+    useChatStore.setState({ messages: [message] });
+    useChatStore.getState().setPendingPermission({
+      id: "permission-1",
+      kind: "write",
+      details: { kind: "write", toolCallId: "tool-call-1", path: "Note.md" },
+      resolve,
+    });
+
+    expect(useChatStore.getState().messages[0].toolCalls?.[0]).toMatchObject({
+      id: "tool-call-1",
+      status: "running",
+      result: "Waiting for permission approval...",
+    });
+
+    useChatStore.getState().resolvePermission(true, "once");
+
+    expect(useChatStore.getState().pendingPermissions).toEqual([]);
+    expect(resolve).toHaveBeenCalledWith({ kind: "approved" });
+    expect(useChatStore.getState().messages[0].toolCalls?.[0]).toMatchObject({
+      id: "tool-call-1",
+      status: "running",
+      result: "Permission granted. Running tool...",
+    });
+  });
+
+  it("marks the pending permission tool call as an error when denied", () => {
+    const resolve = vi.fn();
+    const toolCall = createToolCall({ id: "tool-call-1", name: "writeNote", status: "running" });
+    const message = createMessage({ toolCalls: [toolCall] });
+
+    useChatStore.setState({
+      messages: [message],
+      pendingPermissions: [{
+        id: "permission-1",
+        kind: "write",
+        details: { kind: "write", toolCallId: "tool-call-1", path: "Note.md" },
+        resolve,
+      }],
+    });
+
+    useChatStore.getState().resolvePermission(false, "once");
+
+    expect(useChatStore.getState().pendingPermissions).toEqual([]);
+    expect(resolve).toHaveBeenCalledWith({
+      kind: "denied-interactively-by-user",
+      feedback: "User denied",
+    });
+    expect(useChatStore.getState().messages[0].toolCalls?.[0]).toMatchObject({
+      id: "tool-call-1",
+      status: "error",
+      result: "Permission denied by user.",
+    });
   });
 
   it("clearMessages removes all messages and clears any error", () => {

@@ -5,6 +5,7 @@ import {
   PluginContext,
   type CopilotPluginContext,
 } from "../views/CopilotChatView";
+import { Logger } from "../utils/logger";
 
 export const mockService = {
   initialize: vi.fn().mockResolvedValue(undefined),
@@ -39,7 +40,13 @@ type ContextOverrides = Partial<CopilotPluginContext> & {
 export function createPluginContext(
   overrides: ContextOverrides = {},
 ): CopilotPluginContext {
+  // Create a mock plugin instance for Logger
+  const mockPlugin = {
+    settings: { logLevel: "info" },
+  } as any;
+
   return {
+    logger: new Logger(mockPlugin),
     app: {
       workspace: {
         getActiveFile: vi.fn(),

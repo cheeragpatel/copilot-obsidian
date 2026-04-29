@@ -1,7 +1,7 @@
 import * as os from "os";
 import type { App, TFile, TFolder } from "obsidian";
 import type { MCPServerEntry, CustomAgentEntry } from "../types/settings";
-import { Logger } from "../utils/Logger";
+import { Logger } from "../utils/logger";
 
 export interface DiscoveredConfig {
   skills: string[];
@@ -86,10 +86,12 @@ function parseFrontmatter(content: string): Record<string, string> {
 export class ConfigDiscovery {
   private app: App;
   private cache?: { result: DiscoveredConfig; timestamp: number };
+  private logger: Logger;
   private static readonly CACHE_TTL_MS = 5000;
 
-  constructor(app: App, private logger: typeof Logger = Logger) {
+  constructor(app: App, logger: Logger) {
     this.app = app;
+    this.logger = logger;
     this.logger.debug("[ConfigDiscovery] Initialized");
   }
 
