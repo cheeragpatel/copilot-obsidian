@@ -1,7 +1,7 @@
 import * as os from "os";
 import type { App, TFile, TFolder } from "obsidian";
 import type { MCPServerEntry, CustomAgentEntry } from "../types/settings";
-import type { Logger } from "../utils/logger";
+import { Logger } from "../utils/logger";
 
 export interface DiscoveredConfig {
   skills: string[];
